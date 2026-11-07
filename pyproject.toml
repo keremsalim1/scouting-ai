@@ -1,0 +1,49 @@
+[project]
+name = "football-ai"
+version = "0.1.0"
+description = "AI-assisted football scouting and player performance analysis (PL, La Liga, Serie A 2025/26)"
+readme = "README.md"
+authors = [
+    { name = "keremsalim1", email = "salimkerem22@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "openplay>=0.1.0",
+    "pandas>=3.1.1",
+    "pyarrow>=26.0.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear,
+# SIM simplify, PD pandas-vet, RUF ruff-specific
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "PD", "RUF"]
+# PD901: `df` as a variable name is idiomatic in analysis code.
+# PD010/PD013: pivot/stack rules are too opinionated for exploratory work.
+ignore = ["PD901", "PD010", "PD013"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Tests needing the real OpenPlay dataset are opt-in: they are slow and
+# require a large download, so the default run (and CI) skips them.
+markers = [
+    "data: requires the real OpenPlay dataset (run with `pytest -m data`)",
+]
+addopts = "-m 'not data' --strict-markers -q"

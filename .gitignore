@@ -1,0 +1,27 @@
+# Raw data must never enter the repository (OpenPlay data is CC-BY 4.0 and
+# re-downloadable; keeping it out keeps the repo small and the license clean).
+# Leading slash anchors this to the repo root so src/football_ai/data/ is tracked.
+/data/
+*.parquet
+*.csv
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
