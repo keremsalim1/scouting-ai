@@ -1,0 +1,127 @@
+{
+  "results": {
+    "eng": {
+      "league": "Premier League",
+      "metrics": {
+        "match_coverage_pct": 100.0,
+        "shot_xg_filled_pct": 100.0,
+        "pass_end_xy_filled_pct": 100.0,
+        "coords_out_of_range": 0,
+        "score_mismatch_pct": 0.0,
+        "unknown_minutes_pct": 0.0
+      },
+      "status": {
+        "match_coverage_pct": "pass",
+        "shot_xg_filled_pct": "pass",
+        "pass_end_xy_filled_pct": "pass",
+        "coords_out_of_range": "pass",
+        "score_mismatch_pct": "pass",
+        "unknown_minutes_pct": "pass"
+      },
+      "info": {
+        "matches": 380,
+        "events": 577884,
+        "passes": 362739,
+        "shots": 9543,
+        "players": 537,
+        "player_match_rows": 11492,
+        "known_gaps": 0,
+        "data_issues": 0,
+        "median_match_length_min": 100.0,
+        "team_minutes_ratio_median": 1.0,
+        "team_minutes_ratio_min": 0.912,
+        "sub_position_rows_pct": 27.25,
+        "season_goals": 1045,
+        "season_xg": 1099.2
+      },
+      "gaps": [],
+      "issues": []
+    },
+    "esp": {
+      "league": "La Liga",
+      "metrics": {
+        "match_coverage_pct": 100.0,
+        "shot_xg_filled_pct": 100.0,
+        "pass_end_xy_filled_pct": 100.0,
+        "coords_out_of_range": 0,
+        "score_mismatch_pct": 0.0,
+        "unknown_minutes_pct": 0.0
+      },
+      "status": {
+        "match_coverage_pct": "pass",
+        "shot_xg_filled_pct": "pass",
+        "pass_end_xy_filled_pct": "pass",
+        "coords_out_of_range": "pass",
+        "score_mismatch_pct": "pass",
+        "unknown_minutes_pct": "pass"
+      },
+      "info": {
+        "matches": 380,
+        "events": 577205,
+        "passes": 362956,
+        "shots": 9510,
+        "players": 600,
+        "player_match_rows": 11953,
+        "known_gaps": 0,
+        "data_issues": 0,
+        "median_match_length_min": 99.0,
+        "team_minutes_ratio_median": 1.0,
+        "team_minutes_ratio_min": 0.881,
+        "sub_position_rows_pct": 30.06,
+        "season_goals": 1024,
+        "season_xg": 1023.4
+      },
+      "gaps": [],
+      "issues": []
+    },
+    "ita": {
+      "league": "Serie A",
+      "metrics": {
+        "match_coverage_pct": 100.0,
+        "shot_xg_filled_pct": 100.0,
+        "pass_end_xy_filled_pct": 100.0,
+        "coords_out_of_range": 0,
+        "score_mismatch_pct": 0.0,
+        "unknown_minutes_pct": 0.0
+      },
+      "status": {
+        "match_coverage_pct": "pass",
+        "shot_xg_filled_pct": "pass",
+        "pass_end_xy_filled_pct": "pass",
+        "coords_out_of_range": "pass",
+        "score_mismatch_pct": "pass",
+        "unknown_minutes_pct": "pass"
+      },
+      "info": {
+        "matches": 380,
+        "events": 562672,
+        "passes": 357679,
+        "shots": 9381,
+        "players": 586,
+        "player_match_rows": 11928,
+        "known_gaps": 0,
+        "data_issues": 0,
+        "median_match_length_min": 98.0,
+        "team_minutes_ratio_median": 1.0,
+        "team_minutes_ratio_min": 0.898,
+        "sub_position_rows_pct": 29.91,
+        "season_goals": 922,
+        "season_xg": 982.4
+      },
+      "gaps": [],
+      "issues": []
+    }
+  },
+  "feature_flags": {
+    "gol / G−xG analizleri": "pass",
+    "koordinat tabanlı pas metrikleri": "pass",
+    "minimum dakika filtresi": "pass",
+    "pas haritaları": "pass",
+    "per-90": "pass",
+    "per-90 metrikleri": "pass",
+    "tüm koordinat tabanlı görseller": "pass",
+    "tüm sezon toplamları": "pass",
+    "xG analizi": "pass",
+    "xG tabanlı scouting metrikleri": "pass"
+  }
+}

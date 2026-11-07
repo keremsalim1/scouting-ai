@@ -32,15 +32,25 @@ target-version = "py312"
 # E/W pycodestyle, F pyflakes, I isort, UP pyupgrade, B bugbear,
 # SIM simplify, PD pandas-vet, RUF ruff-specific
 select = ["E", "W", "F", "I", "UP", "B", "SIM", "PD", "RUF"]
-# PD901: `df` as a variable name is idiomatic in analysis code.
-# PD010/PD013: pivot/stack rules are too opinionated for exploratory work.
-ignore = ["PD901", "PD010", "PD013"]
+ignore = [
+    # PD010/PD013: pivot/stack rules are too opinionated for exploratory work.
+    "PD010",
+    "PD013",
+    # RUF001/002/003 guard against homoglyph attacks in English source. Report
+    # strings and comments here are deliberately Turkish and use typographic
+    # dashes (–, −) and math operators (≤, ≥), which the rule flags as ambiguous.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B011"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/ is not an installed package; expose it so tests can import it.
+pythonpath = ["scripts"]
 # Tests needing the real OpenPlay dataset are opt-in: they are slow and
 # require a large download, so the default run (and CI) skips them.
 markers = [
