@@ -66,10 +66,27 @@ Eşikler hedeftir, durdurucu değildir. Her kontrol `pass` / `degraded` / `disab
 - `docs/PLAN.md`'deki kabul kriterleri karşılanmadan günü bitmiş sayma; karşılanmayanı açıkça söyle.
 
 ## Komutlar (oluşturuldukça güncelle)
-- `uv run pytest` — testler (`-m data` gerçek veri testleri)
-- `uv run python scripts/validate_openplay.py reports` — veri doğrulama
-- `make etl`, `make eval-sql`, `make eval-rag`, `make eval-agent`, `make eval-reports` — ileride
+Tam liste: `make help`. Windows'ta `uv` PATH'te değilse `make UV="$APPDATA/Python/Python311/Scripts/uv.exe" <hedef>`.
+- `make setup` — sıfırdan her şey: db-up + migrate + validate + etl (~65 sn)
+- `make test` / `make test-data` / `make test-db` — birim / gerçek veri / veritabanı testleri
+- `make validate` — veri doğrulama raporu + Gün 2–4 bulguları
+- `make migrate` / `make etl` / `make counts` / `make etl-bench`
+- `make db-up` / `make db-down` / `make db-reset` / `make db-shell`
+- `make lint` / `make fmt` / `make check`
+- `make eval-sql`, `make eval-rag`, `make eval-agent`, `make eval-reports` — ileride
+
+## Veritabanı (Gün 2)
+PostgreSQL 17 + pgvector, tek konteyner, şema `football`. Ayrıntılı gerekçeler D-008…D-013.
+- Tablolar: `teams`, `players`, `matches`, `lineups`, `player_match_stats`, `shots`, `passes`, `data_quality`, `data_quality_features`
+- `comp` ve `season` her fact tablosunda tekrarlanır; oyuncu/takım adları da denormalize (sezon donmuş + tam yeniden yükleme olduğu için güvenli)
+- Doğal anahtarlar; `passes` PK'si `(match_id, event_id, event_id_sub)`. **Ham `events` bu anahtarda tekil değil** — `OffsideGiven` olayları başka olaylarla id paylaşıyor (82 çakışma).
+- `q_Cross` → `is_cross` gibi yeniden adlandırmalar ve `is_completed` türetmesi text-to-SQL içindir.
+- Idempotency: fact'ler tek transaction'da `TRUNCATE`+`COPY`; `data_quality` append-only, anahtar raporun `generated_at`'i.
+- Roller: `football_etl` (yazar), `football_ro` (yalnız SELECT + sunucu tarafı `statement_timeout`). Gün 5 ajanı yalnızca ikinciyi görür.
+- Çıktı basan her script `football_ai.console.force_utf8()` çağırmalı — Windows cp1254 varsayılanı Türkçe karakterlerde `print()`'i patlatıyor.
 
 ## Durum
 - [x] Gün 0: plan onaylandı
-- [ ] Gün 1: OpenPlay doğrulama (devam ediyor)
+- [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`, 98 test yeşil
+- [x] Gün 2: PostgreSQL + pgvector, idempotent ETL — satır sayıları kaynakla birebir
+- [ ] Gün 3: position_map + player_season / player_per90 view'ları

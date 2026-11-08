@@ -21,6 +21,8 @@ from pathlib import Path
 import openplay as op
 import pandas as pd
 
+from football_ai.console import force_utf8
+
 SEASON = "2025/26"
 LEAGUES = {"eng": "Premier League", "esp": "La Liga", "ita": "Serie A"}
 MIN_MINUTES = 900
@@ -373,6 +375,7 @@ def build_section() -> str:
 
 
 def main(report: str = "reports/data_validation_2526.md") -> int:
+    force_utf8()
     warnings.simplefilter("ignore", op.CoverageWarning)
     section = build_section()
     path = Path(report)

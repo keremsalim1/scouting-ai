@@ -280,3 +280,150 @@ commit'e girmemesi gerekiyor.
 4 test geçti (3,68 s). `ruff check .` → temiz. pre-commit → 9/9 geçti.
 
 **Tarih.** 2026-11-07
+
+---
+
+## D-008: İlişkisel model — hafif normalize, lig/sezon her fact tablosunda
+
+**Bağlam.** Şema Gün 5'te text-to-SQL'in, Gün 3–4'te view ve metriklerin, Gün 8'de pgvector benzerliğinin üzerine kurulacağı temel. Normalizasyon düzeyi bir depolama tercihi değil, **LLM'in doğru SQL yazma olasılığını belirleyen bir parametre**: her ek join, modelin hata yapabileceği bir yer.
+
+**Karar.**
+- Her şey `public` değil **`football` şemasında**. Gün 5 allowlist'i böylece "şema football, şu tablolar" olur; `public` toptan kilitlenir.
+- Boyut tabloları (`teams`, `players`) + fact tabloları (`matches`, `lineups`, `player_match_stats`, `shots`, `passes`) + `data_quality`.
+- **`comp` ve `season` her fact tablosunda tekrarlanır.** Scouting sorgusunun en sık filtresi lig + sezon; bunu join yerine iki küçük kolonla ödemek doğrudan doğruluk kazancı.
+- Etiket kolonları (`player`, `team`, `opponent` adları) da fact tablolarında denormalize. **Bunu güvenli kılan şey sezonun donmuş ve ETL'in tam yeniden yükleme olması** — kopyaların boyut satırından sapması imkânsız.
+- Doğal anahtarlar, surrogate yok. Kaynak id'leri kararlı integer; ek bir katman LLM'in öğrenmesi gereken bir şey olurdu, karşılığı yok.
+- **Yabancı anahtarlar bilinçli olarak tanımlı.** Bütünlüğün yanında asıl gerekçe: Gün 5'te şema açıklaması Postgres kataloğundan üretilecek ve FK'lar modele tabloların nasıl join edileceğini söyleyen şey.
+- `passes` kolonları yeniden adlandırıldı: `q_Cross` → `is_cross`, `q_Longball` → `is_long_ball`, `q_Length` → `pass_length`. **Kolon adlandırması bir text-to-SQL özelliğidir.** `outcome = 'Successful'` yerine `is_completed` boolean'ı türetildi; modelin string literal'i hatırlaması gerekmiyor.
+- Ham `events` tablosu **yüklenmedi.** 152 kolonun çoğu kaynak-özgü nitelik bayrağı; `passes` ve `shots` küratörlü özetler. Başka olay tipi gerektiğinde o gün kendi tablosunu alır.
+
+**Anahtarlar kodlanmadan önce doğrulandı.** Probe sonucu:
+
+| Anahtar | Sonuç |
+| --- | --- |
+| `matches(match_id)` | tekil ✓ |
+| `player_match_stats(match_id, player_id)` | tekil ✓ |
+| `lineups(match_id, player_id)` | tekil ✓ |
+| `shots(match_id, event_id, event_id_sub)` | tekil ✓ |
+| `passes(match_id, event_id, event_id_sub)` | tekil ✓ |
+| `events(match_id, event_id, event_id_sub)` | **tekil DEĞİL — 82 kopya** |
+
+Kopyaların kök nedeni bulundu: 82 grubun **hepsinde** `OffsideGiven` var. Kaynak (WhoScored), offside olayına aynı maçtaki başka bir olayın `event_id`'sini veriyor — örnek: 69. dakikadaki offside ile 80. dakikadaki pas aynı id, farklı takım, farklı oyuncu. Anahtara `type` eklenince üç ligde de 0 kopya. `Pass` alt kümesi zaten temiz olduğu için `passes` 3 kolonlu PK kullanabiliyor. **Probe yapılmasaydı bu, raw events tablosunda yükleme hatası olarak ortaya çıkardı.**
+
+**Değerlendirilen alternatifler.**
+- *Saf 3NF* — "PL'de xA/90'ı en yüksek sol kanatlar" sorusu 4 join gerektirirdi.
+- *Tek büyük denormalize tablo* — toplama (aggregation) belirsizleşir; hangi satır düzeyinde olduğu kaybolur.
+- *Surrogate anahtar + doğal anahtar üzerinde unique index* — ekstra katman, sıfır fayda; kaynak id'leri zaten kararlı.
+
+**Sonuç/ölçüm.** 9 tablo, PostgreSQL 17.11 + pgvector 0.8.7. Yüklenen satırlar kaynakla birebir: teams 60 (3×20), matches 1140, lineups 49 901, player_match_stats 35 373, shots 28 434, passes 1 083 374.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-009: Boyut tabloları yalnızca referans edilen satırlarla yüklenir
+
+**Bağlam.** `op.teams()` 422 takım, `op.players()` 20 782 oyuncu döndürüyor — tüm turnuvalar, tüm sezonlar. Bizim kapsamımız 3 lig / 1 sezon.
+
+**Karar.** Fact tablolarının referans ettiği id'ler toplanıp boyut tabloları ona göre filtrelenir. Toplama `player_id` **ve** `assist_player_id`'yi, takımlarda `team_id`/`opponent_id`/`home_team_id`/`away_team_id`'yi kapsar. Referans edilen bir id kaynakta yoksa ETL Python tarafında **okunabilir bir hatayla durur**, 1 milyon satırlık COPY'nin ortasında FK ihlaliyle değil.
+
+**Değerlendirilen alternatifler.**
+- *Hepsini yükle* — `select count(*) from players` sorusuna 20 782 cevabı yanıltıcı olurdu; LLM'in "veritabanında kaç oyuncu var" sorusuna verdiği cevap yanlış olur. Takımlarda daha beter: milli takımlar listeye girer.
+- *Yalnızca `player_match_stats`'tan topla* — `shots.assist_player_id` FK'sı kırılırdı; asist yapan ama o ligde maç istatistiği olmayan oyuncular var.
+
+**Sonuç/ölçüm.** teams 422 → **60**, players 20 782 → **2166**. 2166 sayısı `player_season_stats`'taki 1723'ten yüksek, çünkü `lineups` kullanılmayan yedekleri de içeriyor (sahaya çıkmayan oyuncunun maç istatistiği yok ama kadro satırı var).
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-010: Idempotency — donmuş fact'lerde TRUNCATE, tarihçede append
+
+**Bağlam.** Gün 2 kabul kriteri: "ikinci çalıştırmada kopya yok". Üç strateji mümkün: truncate-and-reload, UPSERT (`on conflict`), staging tablo + atomik swap.
+
+**Karar.** **Veri tipine göre iki farklı strateji:**
+
+*Fact tabloları (donmuş sezon):* tek transaction içinde `TRUNCATE` + `COPY`. Bunu güvenli kılan şey **PostgreSQL'de TRUNCATE'in transactional olması** (MySQL'de değildir): yükleme yarıda patlarsa rollback eski satırları geri getirir. Tek `TRUNCATE` ifadesinde tüm tablolar birlikte adlandırılıyor; böylece aralarındaki FK'lar aynı anda sağlanır, bağımlılık sıralaması gerekmez ve `CASCADE` (sonraki günlerin tablolarını da silerdi) hiç kullanılmaz.
+
+*`data_quality` (biriken tarihçe):* append + `on conflict do nothing`. Anahtar **raporun kendi `generated_at` değeri**, ETL'in çalıştığı an değil.
+
+**Bu ikinci kısım bir hata düzeltmesidir.** İlk uygulamada `run_at = datetime.now()` idi ve tablo da TRUNCATE ediliyordu: yani tarihçe için tasarlanmış bir tabloyu her koşuda siliyordum, üstelik idempotency anahtarı **duvar saatinden** geliyordu. Doğru kural: **idempotency anahtarı veriden türer, yükleyicinin saatinden değil.** `validate_openplay.py` artık rapora `generated_at` yazıyor; aynı raporu iki kez yüklemek no-op, yeni bir doğrulama koşusu ise yeni bir tarihçe noktası.
+
+**Değerlendirilen alternatifler.**
+- *UPSERT (fact'ler için)* — değişen veri için doğru araç; bizde veri değişmiyor. Dahası kaynaktan bir satır silinse DB'de yetim kalırdı.
+- *Staging tablo + atomik swap* — kesintisiz production yeniden yüklemesi için; geliştirme ortamında uptime gereksinimi yok, karşılığında karmaşıklık getirir.
+- *`DELETE FROM`* — TRUNCATE'ten yavaş, tablo şişmesi (bloat) bırakır.
+
+**Sonuç/ölçüm.** İkinci ETL koşusu aynı satır sayılarını üretti; 7 tabloda doğal anahtar üzerinde 0 kopya (test edildi). Migration da idempotent: ikinci koşu 0 migration uyguluyor; uygulanmış bir migration dosyası değiştirilirse SHA-256 kontrolü hata verip duruyor.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-011: Yükleme yöntemi COPY — ve darboğazın gerçekte nerede olduğu
+
+**Bağlam.** 1,08 M pas satırı yüklenecek. `pandas.to_sql` kolay yol.
+
+**Karar.** `COPY ... FROM STDIN` (psycopg3). Kolonlar COPY ifadesinde açıkça adlandırılıyor, böylece tabloya sonradan kolon eklenmesi değerleri sessizce kaydırmıyor. ETL sonunda `ANALYZE`: COPY planner istatistiklerini güncellemez, onsuz planner tabloları boş sanıp Gün 3 view'larında nested loop seçer.
+
+**Sonuç/ölçüm — ve bir iddia düzeltmesi.** İlk yazdığım yorumda COPY'nin avantajını "dakikalar vs saniyeler" diye tarif etmiştim. **Ölçüm bunu çürüttü.** 50 000 pas satırında:
+
+| Yöntem | Süre | Hız |
+| --- | --- | --- |
+| `COPY` | 1,01 s | 49 316 satır/s |
+| `pandas.to_sql` | 2,51 s | 19 932 satır/s |
+| fark | | **2,5×** |
+
+Gerçek, ama bu tercihin genelde satıldığı büyüklük sırası değil. "Neden sadece 2,5×" sorusunu ayrıca ölçtük:
+
+| Aşama (50 000 satır × 31 kolon) | Süre |
+| --- | --- |
+| `itertuples` tek başına | 0,143 s |
+| + hücre başına `to_copy_value` | 0,721 s |
+| `to_csv` ile aynı serileştirme | 0,381 s |
+
+Yani 1,01 saniyenin **~%71'i socket'in bizim tarafında**, pandas skalerlerini Python'da dönüştürmekte geçiyor — sunucuda değil. `to_csv` yoluna geçmek bu kısmı 1,9× hızlandırır, toplam yüklemeyi ~1,5× (passes 36 s → ~24 s).
+
+**Alınmayan karar:** bu optimizasyon şimdi yapılmadı. 1,5× kazanç için metin kolonlarında NULL / boş string kodlamasını kırılgan hale getirmeye değmez. Yükleme süresi sorun olmaya başlarsa bilinen ilk adım bu.
+
+Tam yükleme: okuma 4,0 s + COPY/commit 41,2 s.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-012: Migration yönetimi — numaralı SQL dosyaları, Alembic değil
+
+**Bağlam.** 22 gün daha şema değişecek (Gün 3 view'ları, Gün 8 vektör tablosu). Şema değişikliklerinin hem tekrar edilebilir hem de makineler arası tutarlı olması gerekiyor.
+
+**Karar.** `infra/migrations/NNN_*.sql` + `scripts/migrate.py` (~130 satır). Uygulananlar `football.schema_migrations` tablosunda **SHA-256'sıyla** kayıtlı. Her migration kendi transaction'ında. Uygulanmış bir dosya sonradan değiştirilirse runner durup hata veriyor — aksi halde aynı repodan iki makine farklı şema elde ederdi.
+
+Salt-okunur rolün **oluşturulması** Python'da, migration'da değil: şifre ortamdan geliyor ve commit edilen bir dosyaya girmemeli. Migration yalnızca `GRANT` yapıyor.
+
+**Değerlendirilen alternatifler.**
+- *Alembic* — değeri SQLAlchemy modellerinden diff üretmesi. Bu projede ORM yok (Gün 5 sqlglot ile doğrulayacak, SQLAlchemy ile değil). Modelsiz Alembic = Python iskeleti içine sarılmış elle yazılmış SQL: tüm tören, sıfır fayda.
+- *`docker-entrypoint-initdb.d/init.sql`* — yalnızca volume boşken çalışır. Her şema değişikliğinde veritabanını silmek gerekirdi; 22 gün için tuzak.
+- *Migration'ı hiç kullanmamak, şemayı elle yönetmek* — tekrar üretilemez.
+
+**Öğrenilen Postgres ayrıntısı.** `CREATE ROLE` / `ALTER ROLE` **utility** ifadeleridir ve bind parametresi kabul etmez: `password %s` → `syntax error at or near "$1"`. Çözüm string birleştirme değil, `psycopg.sql.Literal` (kaçışlamayı doğru yapar) ve rol adı için `psycopg.sql.Identifier`.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-013: Gün 5 güvenliği şemayı bugünden şekillendirir
+
+**Bağlam.** Gün 5'te LLM üretimi SQL çalıştırılacak, Gün 19'da 30 saldırgan prompt denenecek. Güvenliği o gün eklemek, şemayı o gün yeniden yazmak demek.
+
+**Karar — bugün uygulandı:**
+- İki rol: `football_etl` (sahip, yazar) ve `football_ro` (yalnız `SELECT`).
+- `ALTER DEFAULT PRIVILEGES` ile Gün 3 view'ları ve sonradan eklenen tablolar `SELECT` iznini otomatik devralır; her yeni nesnede grant unutma riski yok.
+- `REVOKE ALL ON SCHEMA public FROM PUBLIC` ve `REVOKE CREATE ON SCHEMA football FROM football_ro`.
+- **`ALTER ROLE football_ro SET statement_timeout = 5000`** — zaman aşımı rolün üzerinde, yani **sunucu tarafında** zorunlu. Python tarafı bir timeout istemci iyi niyetine bağlıdır; prompt injection ile üretilmiş bir sorgu rolün ayarını kaldıramaz.
+- `NOCREATEDB NOCREATEROLE NOSUPERUSER` açıkça set edilmiş.
+- `db.py` iki ayrı fonksiyon sunuyor: `etl_dsn()` ve `readonly_dsn()`. Yalnızca `readonly_dsn` import eden bir modül yazma erişimi **elde edemez**.
+- `ALLOWED_TABLES` listesi `db.py`'de; şema, ETL ve Gün 5 allowlist'inin birbirinden sapması engellenir (testle doğrulanıyor).
+
+**Sonuç/ölçüm.** 12 güvenlik testi geçiyor (`uv run pytest -m db`): `football_ro` 7 farklı yazma ifadesinde (`insert`, `update`, `delete`, `truncate`, `create table`, `drop table`, `alter table`) ve `public` şemasında tablo oluşturmada `InsufficientPrivilege` alıyor; `select pg_sleep(30)` gerçekten `QueryCanceled` ile iptal ediliyor; `is_superuser` = `off`.
+
+**Tarih.** 2026-11-08

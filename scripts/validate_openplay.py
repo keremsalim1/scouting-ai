@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 import sys
 import warnings
+from datetime import UTC, datetime
 from pathlib import Path
 
 import openplay as op
+
+from football_ai.console import force_utf8
 
 SEASON = "2025/26"
 SEASON_CODE = "2526"
@@ -174,13 +177,25 @@ def to_markdown(results: dict, flags: dict) -> str:
 
 
 def main(out_dir: str = "reports") -> int:
+    force_utf8()
     warnings.simplefilter("ignore", op.CoverageWarning)
     results = {c: validate(c) for c in LEAGUES}
     flags = feature_flags(results)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(
-        {"results": results, "feature_flags": flags},
+        {
+            # generated_at is the identity of this report. The ETL uses it as
+            # the data_quality primary key, so re-loading the same report is a
+            # no-op while a genuinely new run appends a new row. Deriving the
+            # key from the data rather than from the loader's wall clock is
+            # what makes that load idempotent.
+            "generated_at": datetime.now(UTC).isoformat(),
+            "data_tag": op.DATA_TAG,
+            "season": SEASON_CODE,
+            "results": results,
+            "feature_flags": flags,
+        },
         ensure_ascii=False,
         indent=2,
         default=str,

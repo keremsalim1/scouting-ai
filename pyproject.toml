@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 dependencies = [
     "openplay>=0.1.0",
     "pandas>=3.1.1",
+    "psycopg[binary]>=3.3.8",
     "pyarrow>=26.0.1",
+    "python-dotenv>=1.2.4",
 ]
 
 [build-system]
@@ -22,6 +24,7 @@ dev = [
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",
     "ruff>=0.17.4",
+    "sqlalchemy>=2.1.8",
 ]
 
 [tool.ruff]
@@ -55,5 +58,6 @@ pythonpath = ["scripts"]
 # require a large download, so the default run (and CI) skips them.
 markers = [
     "data: requires the real OpenPlay dataset (run with `pytest -m data`)",
+    "db: requires a running, loaded Postgres (run with `pytest -m db`)",
 ]
-addopts = "-m 'not data' --strict-markers -q"
+addopts = "-m 'not data and not db' --strict-markers -q"

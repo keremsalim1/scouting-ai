@@ -10,7 +10,7 @@ reports. A core rule runs through the whole project: **the LLM never produces
 numbers.** Every figure in a report comes from a tool or database query; the
 model only writes the interpretation.
 
-Status: **Day 1 complete — data validated.**
+Status: **Day 2 complete — data validated and loaded into Postgres.**
 Plan: [docs/PLAN.md](docs/PLAN.md) · Decisions: [DECISIONS.md](DECISIONS.md)
 
 ## Data
@@ -38,26 +38,108 @@ Facts worth knowing before writing queries:
 
 ## Setup
 
+Needs Docker and `uv`. Python 3.12 is installed by `uv` itself.
+
 ```bash
-uv sync                     # create .venv (Python 3.12) and install locked deps
+cp .env.example .env        # then set the two passwords
+uv sync                     # create .venv and install locked deps
 uv run pre-commit install   # enable commit-time lint/format hooks
-uv run pytest               # 28 unit tests
+make setup                  # db-up + migrate + validate + etl, from scratch
+make test                   # 47 unit tests
 ```
 
-On Windows, if `uv` is not on your `PATH` after `pip install --user uv`, add
-`%APPDATA%\Python\Python311\Scripts` to it. If `uv` fails with
-`Missing expected target directory for Python minor version link`, install the
-interpreter elsewhere once: `UV_PYTHON_INSTALL_DIR=C:\Users\<you>\.uv-python uv python install 3.12`.
+`make setup` takes about **65 seconds** on an empty volume and is safe to
+re-run: it is idempotent end to end.
+
+Windows notes (all three were hit while building this):
+
+- If `uv` is not on `PATH` after `pip install --user uv`, either add
+  `%APPDATA%\Python\Python311\Scripts` to it, or pass it per command:
+  `make UV="$APPDATA/Python/Python311/Scripts/uv.exe" setup`.
+- If `uv` fails with `Missing expected target directory for Python minor
+  version link`, install the interpreter elsewhere once:
+  `UV_PYTHON_INSTALL_DIR=C:\Users\<you>\.uv-python uv python install 3.12`.
+- `make` is not installed by default: `winget install ezwinports.make`.
 
 ## Commands
 
+Run `make help` for the current list.
+
 | Command | Purpose |
 | --- | --- |
-| `uv run pytest` | unit tests (real-data tests excluded) |
-| `uv run pytest -m data` | tests against the real OpenPlay dataset |
-| `uv run python scripts/validate_openplay.py reports` | data validation report |
-| `uv run python scripts/explore_day1.py` | append structural findings to the report |
-| `uv run ruff check . && uv run ruff format .` | lint and format |
+| `make setup` | `db-up` + `migrate` + `validate` + `etl` from nothing |
+| `make db-up` / `db-down` / `db-reset` | start / stop / destroy Postgres |
+| `make db-shell` | psql session as the owner role |
+| `make migrate` | apply pending SQL migrations |
+| `make etl` | full reload of OpenPlay 2025/26 into Postgres |
+| `make etl-bench` | measure `COPY` against `pandas.to_sql` |
+| `make counts` | row counts per table |
+| `make validate` | regenerate the data validation report and findings |
+| `make test` | unit tests (no database, no dataset) |
+| `make test-data` | tests against the real OpenPlay dataset |
+| `make test-db` | tests against the loaded database |
+| `make lint` / `make fmt` / `make check` | ruff check / format / all of it |
+
+## Database
+
+PostgreSQL 17 with pgvector, one container, schema `football`.
+
+```
+teams  players ──┐
+                 ├── matches ──┬── lineups              (full matchday squad)
+                 │             ├── player_match_stats   (players who appeared)
+                 │             ├── shots
+                 │             └── passes               (events where type='Pass')
+                 └── data_quality, data_quality_features
+```
+
+Design choices that are not obvious, with the reasoning in `DECISIONS.md`:
+
+- **`comp` and `season` are repeated on every fact table** (D-008). The most
+  common filter in a scouting query is league + season; paying two small
+  columns to avoid a join is a direct text-to-SQL accuracy win. Player and
+  team *names* are denormalised for the same reason — safe only because the
+  season is finished and the ETL is a full reload, so copies cannot drift.
+- **Qualifier columns are renamed**: `q_Cross` → `is_cross`,
+  `q_Longball` → `is_long_ball`. A model has no idea what `q_Longball` is.
+  `is_completed` is derived from `outcome` so no string literal needs
+  remembering.
+- **Natural keys, no surrogates** — all verified unique against the source
+  before being written into the schema. The raw event stream is *not* unique
+  on `(match_id, event_id, event_id_sub)`: the source reuses an id between an
+  `OffsideGiven` event and an unrelated event, 82 times across the three
+  leagues. The `Pass` subset is clean, which is why `passes` can use that key.
+- **Two roles from day one** (D-013): `football_etl` writes, `football_ro`
+  only selects and carries a server-side `statement_timeout`. From day 5 the
+  SQL agent only ever sees the second one.
+- **Idempotency differs by data type** (D-010): the frozen fact tables are
+  `TRUNCATE` + `COPY` in one transaction (TRUNCATE is transactional in
+  Postgres, so a failed load rolls back to the previous contents).
+  `data_quality` is append-only history, keyed by the report's own
+  `generated_at` rather than by the loader's clock.
+
+## Day 2 — load
+
+| Table | Rows | Matches source |
+| --- | --- | --- |
+| `teams` | 60 | 3 leagues x 20 |
+| `players` | 2 166 | filtered from 20 782 in the source |
+| `matches` | 1 140 | 3 x 380 |
+| `lineups` | 49 901 | 15 189 + 16 939 + 17 773 |
+| `player_match_stats` | 35 373 | 11 492 + 11 953 + 11 928 |
+| `shots` | 28 434 | 9 543 + 9 510 + 9 381 |
+| `passes` | 1 083 374 | 362 739 + 362 956 + 357 679 |
+
+Measured on this machine (`make etl-bench`, 50 000 pass rows):
+`COPY` 1.01s vs `pandas.to_sql` 2.51s — **2.5x**, not the order of magnitude
+this choice is usually sold with. The reason is that ~71% of COPY time is
+Python converting pandas scalars, not the server; see D-011 for the numbers
+and the optimisation we deliberately did not take.
+
+Tests: **47** unit (no database), **4** against the real dataset, **47**
+against the loaded database — including 12 that assert the read-only role
+cannot write, cannot create objects, and really does get its queries
+cancelled by the server-side timeout.
 
 ## Day 1 — data validation
 
