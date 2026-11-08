@@ -51,15 +51,22 @@ make test                   # 47 unit tests
 `make setup` takes about **65 seconds** on an empty volume and is safe to
 re-run: it is idempotent end to end.
 
-Windows notes (all three were hit while building this):
+Windows notes (all were hit while building this):
 
-- If `uv` is not on `PATH` after `pip install --user uv`, either add
-  `%APPDATA%\Python\Python311\Scripts` to it, or pass it per command:
+- Install `uv` with the official installer, not `pip`:
+  `irm https://astral.sh/uv/install.ps1 | iex`. It targets `~\.local\bin`,
+  which is already on `PATH` in most setups, so no shell restart is needed.
+  A `pip install --user uv` lands in `%APPDATA%\Python\Python3xx\Scripts`,
+  which usually is *not* on `PATH`.
+- If `uv` is on disk but not on `PATH`, you can pass it per command instead:
   `make UV="$APPDATA/Python/Python311/Scripts/uv.exe" setup`.
 - If `uv` fails with `Missing expected target directory for Python minor
   version link`, install the interpreter elsewhere once:
   `UV_PYTHON_INSTALL_DIR=C:\Users\<you>\.uv-python uv python install 3.12`.
 - `make` is not installed by default: `winget install ezwinports.make`.
+- PATH edits: use `[Environment]::SetEnvironmentVariable(...,"User")`, not
+  `setx`. `setx` silently truncates at 1024 characters, and a typical user
+  PATH here is already over 1000.
 
 ## Commands
 
