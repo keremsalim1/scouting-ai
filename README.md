@@ -10,7 +10,7 @@ reports. A core rule runs through the whole project: **the LLM never produces
 numbers.** Every figure in a report comes from a tool or database query; the
 model only writes the interpretation.
 
-Status: **Day 2 complete — data validated and loaded into Postgres.**
+Status: **Day 3 complete — positions mapped, season and per-90 views live.**
 Plan: [docs/PLAN.md](docs/PLAN.md) · Decisions: [DECISIONS.md](DECISIONS.md)
 
 ## Data
@@ -98,6 +98,11 @@ teams  players ──┐
                  │             ├── shots
                  │             └── passes               (events where type='Pass')
                  └── data_quality, data_quality_features
+
+views:  position_map          one position group per player per league-season
+        player_season_club    season totals per player AND club   (1 771 rows)
+        player_season         clubs combined, position attached   (1 723 rows)
+        player_per90          per-90 rates and ratio metrics
 ```
 
 Design choices that are not obvious, with the reasoning in `DECISIONS.md`:
@@ -147,6 +152,62 @@ Tests: **47** unit (no database), **4** against the real dataset, **47**
 against the loaded database — including 12 that assert the read-only role
 cannot write, cannot create objects, and really does get its queries
 cancelled by the server-side timeout.
+
+## Day 3 — positions and per-90
+
+Every player gets one position group per league-season, voted from
+minute-weighted **starting** positions (substitute minutes carry no positional
+information — the source writes `Sub`). Eight groups, with a four-group
+fallback pool for league-groups too small to support a percentile:
+
+| Group | Raw codes | eng | esp | ita |
+| --- | --- | --- | --- | --- |
+| GK | GK | 25 | 24 | 24 |
+| CB | DC | 71 | 72 | 80 |
+| FB | DL, DR, **DML, DMR** | 61 | 69 | 64 |
+| DM | DMC | 42 | 27 | 10 |
+| CM | MC | 34 | 49 | 83 |
+| AM | AMC | 36 | 16 | 14 |
+| W | AML, AMR, ML, MR | 39 | 48 | 9 |
+| FW | FW, FWL, FWR | 49 | 56 | 70 |
+
+Counts are players with 900+ minutes. `DML`/`DMR` map to full-back, not
+defensive midfield: they are the wing-back slot in a 3-5-2, and Serie A plays
+them for 9.1% of minutes against 6.2% for `DL`/`DR` (England is the reverse).
+Treating them as midfielders left Serie A with 22 full-backs; as wing-backs the
+three leagues read 61/69/64. See D-014.
+
+`position_map` also carries `position_source` and `position_share`, because the
+answer is not equally trustworthy for everyone:
+
+- `starts` (1 519 players) — voted from real starting minutes
+- `main_position` (74) — never started; fell back to the players dimension
+- `unknown` (130) — never started and no fallback either
+
+A third source was measured and rejected: classifying by median pass position
+scored 70.9% overall but **32% for AM and 37% for CM**, and the players who
+need it average 13 passes. Saying "unknown" beats guessing. None of the 130
+reaches 900 minutes, so no percentile population is affected — asserted by a
+test. `position_share` is below 0.6 for roughly one player in six, which is
+genuine positional ambiguity a report should surface rather than hide.
+
+### Per-90 verification
+
+`player_per90` follows D-004: per-90 divides by real expanded minutes, and
+ratios are ratios of sums with `NULL` (not 0) on a zero denominator.
+
+Checked against `op.player_season_stats(per90=True)` for **all 1 064**
+player-club rows with 900+ minutes, on `npxg`, `xa` and `progressive_passes`:
+
+```
+largest absolute difference: 0.000e+00   (tolerance 0.01)
+```
+
+Exactly zero, where day 1 measured `2.86e-08`. The difference is where the
+widening happens: the source columns are `float32`, and day 1 summed 20-38
+match values before widening. The views cast to `double precision` *before*
+summing, which reproduces openplay bit for bit. Reproducing the old number by
+deliberately summing in `float32` confirmed it (D-017).
 
 ## Day 1 — data validation
 

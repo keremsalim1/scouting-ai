@@ -85,8 +85,20 @@ PostgreSQL 17 + pgvector, tek konteyner, şema `football`. Ayrıntılı gerekçe
 - Roller: `football_etl` (yazar), `football_ro` (yalnız SELECT + sunucu tarafı `statement_timeout`). Gün 5 ajanı yalnızca ikinciyi görür.
 - Çıktı basan her script `football_ai.console.force_utf8()` çağırmalı — Windows cp1254 varsayılanı Türkçe karakterlerde `print()`'i patlatıyor.
 
+## Pozisyon ve view'lar (Gün 3)
+Ayrıntılı gerekçeler D-014…D-017.
+- View'lar: `position_map`, `player_season_club` (1771), `player_season` (1723), `player_per90`
+- **`player_season` ve `player_season_club` ayrı** — tek view'da karıştırmak 48 takım değiştireni sessizce iki kez saydırır.
+- Pozisyon grupları (8): `GK, CB, FB, DM, CM, AM, W, FW`; geniş havuz (4): `GK, DEF, MID, ATT`.
+- **`DML`/`DMR` → `FB`** (3-5-2 kanat beki), `DM` değil. `ML`/`MR` → `W`.
+- Oylama **grup düzeyinde**, ham pozisyon kodu düzeyinde değil.
+- Her satırda `position_source` (`starts` / `main_position` / `unknown`) ve `position_share` var. 900+ dakikanın tamamı `starts`.
+- Metrik kolonları toplanırken **`float32` → `double precision` genişletmesi toplamadan önce** yapılır; yoksa per-90'da 1e-8 hata birikir (D-017).
+- Oranlarda payda 0 ise `nullif` ile NULL döner, 0 değil.
+
 ## Durum
 - [x] Gün 0: plan onaylandı
-- [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`, 98 test yeşil
+- [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`
 - [x] Gün 2: PostgreSQL + pgvector, idempotent ETL — satır sayıları kaynakla birebir
-- [ ] Gün 3: position_map + player_season / player_per90 view'ları
+- [x] Gün 3: position_map + season/per-90 view'ları — per-90 OpenPlay ile farkı 0
+- [ ] Gün 4: `config/metrics.yaml`, türetilmiş metrikler, yüzdelikler

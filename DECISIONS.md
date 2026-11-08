@@ -427,3 +427,134 @@ Salt-okunur rolün **oluşturulması** Python'da, migration'da değil: şifre or
 **Sonuç/ölçüm.** 12 güvenlik testi geçiyor (`uv run pytest -m db`): `football_ro` 7 farklı yazma ifadesinde (`insert`, `update`, `delete`, `truncate`, `create table`, `drop table`, `alter table`) ve `public` şemasında tablo oluşturmada `InsufficientPrivilege` alıyor; `select pg_sleep(30)` gerçekten `QueryCanceled` ile iptal ediliyor; `is_superuser` = `off`.
 
 **Tarih.** 2026-11-08
+
+---
+
+## D-014: Pozisyon grupları — 8 ince + 4 geniş, ölçülerek seçildi
+
+**Bağlam.** Gün 4'te yüzdelikler "aynı lig + aynı pozisyon grubu" içinde hesaplanacak. Grup seçimi bir zevk meselesi değil: grup çok küçükse yüzdelik anlamsız olur, çok büyükse farklı roller aynı potada karşılaştırılır. 17 ham pozisyon kodunu kaç gruba indireceğimiz **ölçülerek** karar verilmeli.
+
+**Karar.** İki seviye, `position_map` view'ında iki kolon:
+- **İnce (8):** `GK, CB, FB, DM, CM, AM, W, FW`
+- **Geniş (4):** `GK, DEF, MID, ATT` — ince grup yüzdelik için fazla küçükse Gün 4'ün düşeceği havuz
+
+Eşleme:
+
+| Grup | Ham kodlar |
+| --- | --- |
+| GK | GK |
+| CB | DC |
+| **FB** | DL, DR, **DML, DMR** |
+| DM | DMC |
+| CM | MC |
+| AM | AMC |
+| W | AML, AMR, ML, MR |
+| FW | FW, FWL, FWR |
+
+**İki eşleme kararı ölçümden çıktı:**
+
+1. **`DML`/`DMR` orta saha değil, kanat bek.** Serie A'da `DML+DMR` dakikaların %9,1'i, `DL+DR` %6,2; İngiltere'de tam tersi (%2,8 vs %13,7). Bu 3-5-2 dizilişinin imzası. Onları `DM`'e koyunca Serie A'da **22 bek** çıkıyordu (eng 65, esp 69 iken) — futbolen imkânsız, her takım iki geniş savunmacı oynatır. `FB`'ye taşıyınca üç lig **65 / 69 / 67** oldu. Yan doğrulama: pas konumu merkezleri tablosunda `FB` merkezden sapması 39,6 ile **en geniş** grup.
+2. **`ML`/`MR` kendi grubunu kuramaz.** Ayrı `WM` grubu denendiğinde 900+ dakikada eng 5, esp 22, **ita 0** kişi veriyordu. Kanatlara katıldı.
+
+**Değerlendirilen alternatifler.**
+- *9 grup (`WM` ayrı)* — ita'da 0 kişi; reddedildi.
+- *`DML/DMR` → `DM`* — ita'da 22 bek; reddedildi.
+- *Tek seviye grup* — ince grup küçük kaldığında yedek havuz kalmıyor.
+- *Ham 17 kodu grup olarak kullanmak* — `FWL` gibi kodlarda lig başına 10'un altında oyuncu.
+
+**Sonuç/ölçüm.** 900+ dakikada grup büyüklükleri:
+
+| Grup | eng | esp | ita |
+| --- | --- | --- | --- |
+| CB | 71 | 72 | 80 |
+| FB | 61 | 69 | 64 |
+| CM | 34 | 49 | 83 |
+| FW | 49 | 56 | 70 |
+| DM | 42 | 27 | **10** |
+| W | 39 | 48 | **9** |
+| AM | 36 | 16 | **14** |
+| GK | 25 | 24 | 24 |
+
+Geniş gruplar sağlıklı: GK 24–25, DEF 135–146, MID 91–106, ATT 78–105. Kalın yazılan dört hücre Gün 4'te geniş gruba düşecek.
+
+**Ek karar — oylama grup düzeyinde yapılır, ham kod düzeyinde değil.** DL 400 dk + DR 300 dk + AMC 500 dk oynayan bir oyuncu: grup düzeyinde FB (700) kazanır, ham kod düzeyinde AMC (500) kazanırdı. Grup, sonucun kullanılacağı birim olduğu için oylama orada yapılmalı. İlk uygulama ham kod düzeyindeydi ve eng'de AM'i 31 yerine 36 gösteriyordu; düzeltildi ve bir testle çivilendi.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-015: Pozisyon kaynağı üç katmanlı ve her satırda yazılı
+
+**Bağlam.** `position` başlangıç pozisyonudur; sonradan girenlerde `Sub` yazar, yani yedek dakikaları pozisyon bilgisi taşımaz. Hiç ilk 11'de başlamamış **204 oyuncu** var ve kabul kriteri %100 kapsama istiyor.
+
+**Karar.** Üç katman, ve `position_source` kolonu hangisinin kullanıldığını söyler:
+
+| Kaynak | Kural | Oyuncu |
+| --- | --- | --- |
+| `starts` | Dakika ağırlıklı baskın başlangıç grubu | 1519 |
+| `main_position` | `players` boyut tablosundaki ana pozisyon | 74 |
+| `unknown` | İkisi de yok → grup `UNK` | 130 |
+
+Ayrıca `position_share` kolonu: baskın grubun başlangıç dakikalarındaki payı.
+
+**Reddedilen üçüncü kaynak — ve nedeni ölçüldü.** Pas konumundan (medyan x, medyan merkez-sapması) en yakın-merkez sınıflandırması denendi ve **bildiğimiz oyuncular üzerinde doğrulandı**:
+
+| Grup | n | Doğruluk |
+| --- | --- | --- |
+| GK | 109 | %100 |
+| CB | 297 | %93 |
+| FB | 258 | %87 |
+| W | 150 | %80 |
+| FW | 233 | %59 |
+| DM | 88 | %57 |
+| CM | 214 | %37 |
+| AM | 100 | %32 |
+| **Toplam** | **1449** | **%70,9** |
+
+Orta saha rollerinde yazı-tura seviyesinde; merkez bölgeler sahada fiziksel olarak üst üste biniyor. Dahası bu ölçüm **≥50 paslı** oyuncularda yapıldı, oysa sınıflandırılacak 130 oyuncunun **ortalaması 13 pas** (altısında hiç pas yok). Gerçek doğruluk daha da düşük olurdu. **Tahmin etmektense bilmediğini söylemek.**
+
+**"%100 kapsama" ne demek.** Her oyuncu-sezonun bir satırı ve beyan edilmiş bir kaynağı var (1723/1723, hiç NULL yok). 130 oyuncu dürüstçe `UNK` etiketli, uydurulmuş değil. Kritik nokta: **900+ dakika oynayan 931 oyuncunun tamamı `starts` kaynaklı** — yani hiçbir yüzdelik popülasyonu bu boşluktan etkilenmiyor. Bu bir testle çivili.
+
+**Pozisyon belirsizliği gizlenmiyor.** `position_share` dağılımı: 996 oyuncu ≥0,80; 245 oyuncu 0,60–0,80; 225 oyuncu 0,40–0,60; 53 oyuncu <0,40. Yani her altı oyuncudan biri gerçekten çok pozisyonlu ve grup etiketi onlar için bir basitleştirme. Scouting raporu bunu saklamak yerine göstermeli.
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-016: `player_season` ve `player_season_club` ayrı view'lar
+
+**Bağlam.** Plan "takım değiştirenler için takım bazlı + birleşik satır" istiyor. 48 oyuncu sezon içinde kulüp değiştirmiş.
+
+**Karar.** Tek view içinde iki granülerlik karıştırmak yerine **iki ayrı view**:
+- `player_season_club` — oyuncu + kulüp bazında (1771 satır). `op.player_season_stats` bu granülerlikte, çapraz kontrol buna karşı yapılıyor.
+- `player_season` — oyuncu + lig-sezon bazında, kulüpler birleşik (1723 satır). Scouting sorularının sorulduğu birim. `clubs` ve `teams` kolonları transferi görünür kılıyor.
+
+**Değerlendirilen alternatifler.**
+- *Tek view, `team_id IS NULL` birleşik satır* — `SELECT ... FROM player_season WHERE comp='eng'` sorgusu 48 oyuncuyu **sessizce iki kez sayar**. Gün 5'te LLM'in yazacağı en doğal sorgu bu. İki view bu şekilde yanlış okunamaz.
+- *Sadece birleşik view* — kulüp bazlı analiz ve OpenPlay ile çapraz kontrol imkânsızlaşırdı.
+
+**Sonuç/ölçüm.** 1771 − 1723 = **48** = takım değiştiren sayısı (Gün 1'de ölçülen 14+11+23 ile birebir). Dakikalar üç seviyede de aynı: 2 489 523. `matches`, `goals`, `assists`, `shots`, `passes`, `tackles` toplamları fact tablosuyla birebir (testli).
+
+**Tarih.** 2026-11-08
+
+---
+
+## D-017: `float32` toplamadan önce `double precision`'a genişletilir
+
+**Bağlam.** Gün 1'de kendi per-90 hesabımız `op.player_season_stats(per90=True)` ile karşılaştırılmış ve en büyük fark **2,86e-08** çıkmıştı. "Kayan nokta yuvarlaması, önemsiz" diye geçilmişti. Gün 3'te aynı karşılaştırma **tam 0,000e+00** verdi — ve kendi iyi sonucuma şüphelenmek gerekti: ya gerçek bir iyileşme ya da karşılaştırma bozuk.
+
+**Karar.** View'larda `xa`, `xg`, `npxg` kolonları `sum(col::double precision)` ile toplanıyor, `sum(col)` ile değil. Sayım kolonları `bigint` olarak toplanıyor (tam sayı, hatasız).
+
+**Sonuç/ölçüm — hipotez test edildi.** Aynı veriyle üç yol karşılaştırıldı (1064 oyuncu-kulüp satırı, 900+ dakika):
+
+| Yöntem | OpenPlay'den max fark |
+| --- | --- |
+| `float32`'de topla, sonra `float64`'e çevir (Gün 1'in yolu) | **2,863e-08** |
+| `float64`'e çevir, sonra topla | **0,000e+00** |
+| Veritabanı view'ı | **0,000e+00** |
+
+Gün 1'in `2,86e-08`'i birebir yeniden üretildi. Yani hata ne OpenPlay'de ne formüldeydi: kaynak `npxg` kolonu `float32` ve 20–38 maç değeri genişletilmeden toplanıyordu. `op.player_season_stats` ise `float64` döndürüyor. Genişletme toplamadan önce yapılınca sonuç **bit düzeyinde aynı**.
+
+**Neden önemli.** Tek başına 1e-8 önemsiz. Ama Gün 4'te bu toplamların üzerine yüzdelikler, Gün 8'de z-skorlar ve kosinüs benzerliği kurulacak; Gün 17'de rapor sayıları veritabanıyla doğrulanacak. Hesabın tabanını bit düzeyinde tekrar üretilebilir tutmak, sonraki farkların **gerçek** fark olduğunu bilmeyi sağlıyor. Ayrıca D-004'teki "tolerans ±0,01" artık gereksiz cömert: ölçülen fark 0.
+
+**Tarih.** 2026-11-08
