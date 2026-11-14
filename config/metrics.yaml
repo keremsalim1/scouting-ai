@@ -1,0 +1,413 @@
+# Metric definitions - the single source of truth.
+#
+# This file is loaded into football.metric_definitions by the ETL, and the
+# football.player_metrics view exposes one row per player per metric with its
+# value and percentile. A test asserts that this file, the table and the view
+# all name exactly the same metrics, so they cannot drift apart.
+#
+# Every metric must declare: key, label, definition, formula, unit,
+# higher_is_better, category and the player_per90 column it reads.
+#
+# Rules inherited from D-004 and enforced by the views, not by this file:
+#   * per-90 divides by real (expanded) minutes, so a full match is ~98-101
+#     minutes. Values sit 8-11% below sources that assume a nominal 90.
+#   * ratios are ratios of sums, never averages of per-match percentages.
+#   * a zero denominator yields NULL, not 0.
+
+version: 1
+
+defaults:
+  # Minimum minutes to enter a comparison group. 900 keeps 1 072 of 1 723
+  # players, which leaves every league-group cell workable.
+  min_minutes: 900
+
+percentile:
+  # (rank - 0.5) / n, so neither the worst nor the best player is handed an
+  # absolute 0 or 100. On the smallest real group (n=10) this reads 5..95,
+  # where percent_rank would read 0..100 and cume_dist 10..100.
+  method: midrank
+  # Below this many players a league-group cell is too coarse to rank: at
+  # n=10 the percentile moves in 10-point steps.
+  min_group_size: 20
+  # When a cell is too small, keep the role and pool the leagues rather than
+  # keeping the league and widening the role. Measured on coefficient of
+  # variation: pooling leagues stays closer to the single-league ideal on
+  # every metric tested, while widening the role is clearly worse
+  # (npxg_per90 CV 1.264 against 1.399, with 0.932 as the ideal). See D-018.
+  fallback: pool_leagues_keep_role
+
+categories:
+  shooting: Bitiricilik ve şut üretimi
+  creation: Şans yaratma ve asist
+  passing: Pas hacmi ve isabeti
+  progression: Topu ileri taşıma ve ilerletici pas
+  defending: Top kazanma ve savunma müdahaleleri
+  duels: İkili mücadeleler ve top kaybı
+  discipline: Faul ve hatalar
+  goalkeeping: Kaleci müdahaleleri
+
+metrics:
+  # --- shooting -----------------------------------------------------------
+  - key: npxg_per90
+    column: npxg_per90
+    label: npxG / 90
+    definition: Penaltı harici beklenen gol, 90 dakika başına.
+    formula: "Σ npxg / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: shooting
+
+  - key: non_penalty_goals_per90
+    column: non_penalty_goals_per90
+    label: Penaltısız gol / 90
+    definition: Penaltıdan gelmeyen goller, 90 dakika başına.
+    formula: "Σ non_penalty_goals / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: shooting
+
+  - key: shots_per90
+    column: shots_per90
+    label: Şut / 90
+    definition: Toplam şut, 90 dakika başına.
+    formula: "Σ shots / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: shooting
+
+  - key: shots_on_target_per90
+    column: shots_on_target_per90
+    label: İsabetli şut / 90
+    definition: Kaleyi bulan şutlar, 90 dakika başına.
+    formula: "Σ shots_on_target / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: shooting
+
+  - key: npxg_per_shot
+    column: npxg_per_shot
+    label: npxG / şut
+    definition: >-
+      Şut başına penaltısız beklenen gol. Şut hacmini değil, şut kalitesini
+      ölçer; penaltılar hem paydan hem paydadan çıkarılır.
+    formula: "Σ npxg / Σ (shots − penalties_taken)"
+    unit: ratio
+    higher_is_better: true
+    category: shooting
+
+  - key: shot_accuracy_pct
+    column: shot_accuracy_pct
+    label: Şut isabeti %
+    definition: Kaleyi bulan şutların toplam şuta oranı.
+    formula: "Σ shots_on_target / Σ shots × 100"
+    unit: percent
+    higher_is_better: true
+    category: shooting
+
+  - key: goals_minus_npxg
+    column: goals_minus_npxg
+    label: Gol − npxG
+    definition: >-
+      Penaltısız gol ile penaltısız beklenen gol farkı. Sezon toplamıdır,
+      90 dakikaya bölünmez. Pozitif değer beklentinin üstünde bitiricilik
+      anlamına gelir, ama küçük örneklemde ortalamaya dönüş beklenir.
+    formula: "Σ non_penalty_goals − Σ npxg"
+    unit: count
+    higher_is_better: true
+    category: shooting
+
+  # --- creation -----------------------------------------------------------
+  - key: xa_per90
+    column: xa_per90
+    label: xA / 90
+    definition: Beklenen asist, 90 dakika başına.
+    formula: "Σ xa / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: npxg_xa_per90
+    column: npxg_xa_per90
+    label: npxG + xA / 90
+    definition: >-
+      Penaltısız beklenen gol ile beklenen asistin toplamı, 90 dakika başına.
+      Hücum katkısının tek sayıda özeti.
+    formula: "(Σ npxg + Σ xa) / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: assists_per90
+    column: assists_per90
+    label: Asist / 90
+    definition: Gerçekleşen asistler, 90 dakika başına.
+    formula: "Σ assists / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: key_passes_per90
+    column: key_passes_per90
+    label: Kilit pas / 90
+    definition: Şutla sonuçlanan paslar, 90 dakika başına.
+    formula: "Σ key_passes / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: big_chances_created_per90
+    column: big_chances_created_per90
+    label: Net fırsat yaratma / 90
+    definition: Kaynağın "big chance" olarak işaretlediği fırsatların yaratılması.
+    formula: "Σ big_chances_created / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: crosses_per90
+    column: crosses_per90
+    label: Orta / 90
+    definition: Denenen ortalar, 90 dakika başına.
+    formula: "Σ crosses / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: creation
+
+  - key: cross_pct
+    column: cross_pct
+    label: Orta isabeti %
+    definition: Takım arkadaşını bulan ortaların oranı.
+    formula: "Σ crosses_completed / Σ crosses × 100"
+    unit: percent
+    higher_is_better: true
+    category: creation
+
+  # --- passing ------------------------------------------------------------
+  - key: passes_per90
+    column: passes_per90
+    label: Pas / 90
+    definition: Denenen paslar, 90 dakika başına. Hacim ölçüsüdür, kalite değil.
+    formula: "Σ passes / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: passing
+
+  - key: pass_pct
+    column: pass_pct
+    label: Pas isabeti %
+    definition: >-
+      Tamamlanan pasların denenen paslara oranı. Maç yüzdelerinin ortalaması
+      değil, toplamların oranıdır; aradaki fark 6,9–9,7 yüzde puanına çıkabilir.
+    formula: "Σ passes_completed / Σ passes × 100"
+    unit: percent
+    higher_is_better: true
+    category: passing
+
+  - key: long_balls_per90
+    column: long_balls_per90
+    label: Uzun top / 90
+    definition: Denenen uzun toplar, 90 dakika başına.
+    formula: "Σ long_balls / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: passing
+
+  - key: long_ball_pct
+    column: long_ball_pct
+    label: Uzun top isabeti %
+    definition: Tamamlanan uzun topların oranı.
+    formula: "Σ long_balls_completed / Σ long_balls × 100"
+    unit: percent
+    higher_is_better: true
+    category: passing
+
+  - key: through_balls_per90
+    column: through_balls_per90
+    label: Ara pas / 90
+    definition: Savunma arkasına denenen ara paslar, 90 dakika başına.
+    formula: "Σ through_balls / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: passing
+
+  # --- progression --------------------------------------------------------
+  - key: progressive_passes_per90
+    column: progressive_passes_per90
+    label: İlerletici pas / 90
+    definition: >-
+      Kaynağın ilerletici saydığı paslar, 90 dakika başına. OpenPlay'de
+      ilerletici *taşıma* verisi yoktur; bu yalnızca pastır.
+    formula: "Σ progressive_passes / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: progression
+
+  - key: passes_final_third_per90
+    column: passes_final_third_per90
+    label: Son üçlüye pas / 90
+    definition: Son üçlü bölgeye giren paslar, 90 dakika başına.
+    formula: "Σ passes_final_third / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: progression
+
+  - key: passes_into_box_per90
+    column: passes_into_box_per90
+    label: Ceza sahasına pas / 90
+    definition: Ceza sahasına giren paslar, 90 dakika başına.
+    formula: "Σ passes_into_box / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: progression
+
+  - key: dribbles_completed_per90
+    column: dribbles_completed_per90
+    label: Başarılı çalım / 90
+    definition: Tamamlanan çalımlar, 90 dakika başına.
+    formula: "Σ dribbles_completed / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: progression
+
+  - key: dribble_pct
+    column: dribble_pct
+    label: Çalım başarısı %
+    definition: Tamamlanan çalımların denenen çalımlara oranı.
+    formula: "Σ dribbles_completed / Σ dribbles × 100"
+    unit: percent
+    higher_is_better: true
+    category: progression
+
+  # --- defending ----------------------------------------------------------
+  - key: tackles_per90
+    column: tackles_per90
+    label: Müdahale / 90
+    definition: Denenen müdahaleler, 90 dakika başına.
+    formula: "Σ tackles / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: defending
+
+  - key: tackle_pct
+    column: tackle_pct
+    label: Müdahale başarısı %
+    definition: Kazanılan müdahalelerin oranı.
+    formula: "Σ tackles_won / Σ tackles × 100"
+    unit: percent
+    higher_is_better: true
+    category: defending
+
+  - key: interceptions_per90
+    column: interceptions_per90
+    label: Pas arası / 90
+    definition: Pas araları, 90 dakika başına.
+    formula: "Σ interceptions / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: defending
+
+  - key: ball_recoveries_per90
+    column: ball_recoveries_per90
+    label: Top kazanma / 90
+    definition: Top kazanımları, 90 dakika başına.
+    formula: "Σ ball_recoveries / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: defending
+
+  - key: clearances_per90
+    column: clearances_per90
+    label: Uzaklaştırma / 90
+    definition: >-
+      Uzaklaştırmalar, 90 dakika başına. Yüksek değer savunma kalitesi kadar
+      takımın baskı altında oynadığını da gösterebilir; bağlamla okunmalı.
+    formula: "Σ clearances / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: defending
+
+  - key: shot_blocks_per90
+    column: shot_blocks_per90
+    label: Şut blokları / 90
+    definition: Bloklanan şutlar, 90 dakika başına.
+    formula: "Σ shot_blocks / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: defending
+
+  # --- duels --------------------------------------------------------------
+  - key: aerials_per90
+    column: aerials_per90
+    label: Hava topu / 90
+    definition: Girilen hava topu mücadeleleri, 90 dakika başına.
+    formula: "Σ aerials / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: duels
+
+  - key: aerial_pct
+    column: aerial_pct
+    label: Hava topu kazanma %
+    definition: Kazanılan hava toplarının oranı.
+    formula: "Σ aerials_won / Σ aerials × 100"
+    unit: percent
+    higher_is_better: true
+    category: duels
+
+  - key: fouls_won_per90
+    column: fouls_won_per90
+    label: Kazanılan faul / 90
+    definition: Oyuncunun üzerinde yapılan fauller, 90 dakika başına.
+    formula: "Σ fouls_won / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: duels
+
+  - key: miscontrols_per90
+    column: miscontrols_per90
+    label: Kötü kontrol / 90
+    definition: Top kontrolünün kaybedilmesi, 90 dakika başına.
+    formula: "Σ miscontrols / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: false
+    category: duels
+
+  - key: dispossessed_per90
+    column: dispossessed_per90
+    label: Top kaptırma / 90
+    definition: Rakibin müdahalesiyle top kaybı, 90 dakika başına.
+    formula: "Σ dispossessed / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: false
+    category: duels
+
+  # --- discipline ---------------------------------------------------------
+  - key: fouls_committed_per90
+    column: fouls_committed_per90
+    label: Yapılan faul / 90
+    definition: Oyuncunun yaptığı fauller, 90 dakika başına.
+    formula: "Σ fouls_committed / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: false
+    category: discipline
+
+  - key: errors_per90
+    column: errors_per90
+    label: Hata / 90
+    definition: Kaynağın hata olarak işaretlediği oyun içi hatalar.
+    formula: "Σ errors / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: false
+    category: discipline
+
+  # --- goalkeeping --------------------------------------------------------
+  - key: saves_per90
+    column: saves_per90
+    label: Kurtarış / 90
+    definition: >-
+      Kurtarışlar, 90 dakika başına. Yalnızca kaleciler için anlamlıdır ve
+      büyük ölçüde takımın yediği şut hacmine bağlıdır.
+    formula: "Σ saves / Σ minutes_played × 90"
+    unit: per90
+    higher_is_better: true
+    category: goalkeeping

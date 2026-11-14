@@ -96,9 +96,22 @@ Ayrıntılı gerekçeler D-014…D-017.
 - Metrik kolonları toplanırken **`float32` → `double precision` genişletmesi toplamadan önce** yapılır; yoksa per-90'da 1e-8 hata birikir (D-017).
 - Oranlarda payda 0 ise `nullif` ile NULL döner, 0 değil.
 
+## Metrikler ve yüzdelikler (Gün 4)
+`config/metrics.yaml` çalışma zamanı otoritesidir, dokümantasyon değil. Gerekçeler D-018…D-020.
+- Akış: yaml → doğrulama (`football_ai.metrics`) → `metric_definitions` + `metric_config` tabloları → `player_metrics` view'ı. Eşik değiştirmek migration gerektirmez.
+- 38 metrik, 8 kategori; her birinde tanım, formül, birim, yön (`higher_is_better`) ve okuduğu kolon var.
+- Yüzdelik: berabere duyarlı **orta-sıra** `(altındakiler + 0,5 × berabereler) / n`. `percent_rank` en kötüye 0, `cume_dist` en iyiye 100 verdiği için ikisi de reddedildi.
+- **100 her zaman "grubun en iyisi"** — `higher_is_better: false` metriklerde yüzdelik veri katmanında çevrilir, tüketici `if` yazmaz.
+- Karşılaştırma grubu: lig + ince rol → (n < 20 ise) **rolü koru, ligleri havuzla** → (yine n < 20 ise) yüzdelik verme, `comparison_scope = 'insufficient'`, değer yine de döner.
+- Her satırda `comparison_scope`, `comparison_comp`, `comparison_group_size` var; scouting raporu grup büyüklüğünü yazmak zorunda.
+- Yeni metrik eklerken **üç yeri** güncelle: `metrics.yaml`, view'daki `lateral values` listesi — üçüncüsü testtir, sapmayı o yakalar.
+- **`count(*) over w` tuzağı:** `w` penceresinde `ORDER BY` varsa çerçeve `RANGE UNBOUNDED PRECEDING … CURRENT ROW` olur ve koşan sayı döner. Sayım için ayrı, **sırasız** pencere kullan.
+- **psycopg tuzağı:** sorgu metnindeki çıplak `%` (yorumlar dahil) parametre yer tutucusu sayılır; `mod()` kullan.
+
 ## Durum
 - [x] Gün 0: plan onaylandı
 - [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`
 - [x] Gün 2: PostgreSQL + pgvector, idempotent ETL — satır sayıları kaynakla birebir
 - [x] Gün 3: position_map + season/per-90 view'ları — per-90 OpenPlay ile farkı 0
-- [ ] Gün 4: `config/metrics.yaml`, türetilmiş metrikler, yüzdelikler
+- [x] Gün 4: `config/metrics.yaml` (38 metrik) + yüzdelikler — 10 elle kontrol doğru, 182 test yeşil
+- [ ] Gün 5: güvenli text-to-SQL (sqlglot allowlist, salt-okunur rol, timeout)

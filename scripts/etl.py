@@ -20,6 +20,7 @@ import warnings
 import openplay as op
 import pandas as pd
 
+from football_ai import metrics as mx
 from football_ai.console import force_utf8
 from football_ai.data import extract as ex
 from football_ai.data import load as ld
@@ -87,6 +88,35 @@ def read_source() -> dict[str, pd.DataFrame]:
     return frames
 
 
+def read_metric_definitions() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """config/metrics.yaml -> the two definition tables.
+
+    Validation happens in football_ai.metrics, so a malformed yaml fails here
+    with a readable message rather than loading a metric that ranks the wrong
+    way round.
+    """
+    cfg = mx.load()
+    definitions = pd.DataFrame(
+        [
+            {
+                "key": m.key,
+                "source_column": m.source_column,
+                "label": m.label,
+                "definition": m.definition,
+                "formula": m.formula,
+                "unit": m.unit,
+                "higher_is_better": m.higher_is_better,
+                "category": m.category,
+                "sort_order": m.sort_order,
+            }
+            for m in cfg.metrics
+        ],
+        columns=list(ex.METRIC_DEFINITION_COLUMNS),
+    )
+    config = pd.DataFrame(sorted(cfg.config_values.items()), columns=list(ex.METRIC_CONFIG_COLUMNS))
+    return definitions, config
+
+
 def read_data_quality() -> tuple[pd.DataFrame, pd.DataFrame] | None:
     if not REPORT_JSON.exists():
         print(f"  no {REPORT_JSON.name}; run `make validate` first", file=sys.stderr)
@@ -105,8 +135,12 @@ def run_load() -> dict[str, int]:
         if name in frames:
             print(f"  {name:<20} {len(frames[name]):>9,} rows")
 
+    definitions, metric_config = read_metric_definitions()
+    print(f"  metric_definitions   {len(definitions):>9,} metrics from config/metrics.yaml")
+
     dq_tables = ["data_quality", "data_quality_features"]
-    all_tables = [*ex.LOAD_ORDER, *dq_tables]
+    metric_tables = ["metric_definitions", "metric_config"]
+    all_tables = [*ex.LOAD_ORDER, *dq_tables, *metric_tables]
 
     loaded: dict[str, int] = {}
     with connect(etl_dsn()) as conn:
@@ -116,7 +150,13 @@ def run_load() -> dict[str, int]:
         with conn.transaction():
             # Only the frozen fact tables are reloaded. data_quality is
             # append-only history and is deliberately left alone here.
-            ld.truncate(conn, ex.LOAD_ORDER)
+            # Metric definitions mirror a config file, so they are a plain
+            # reload like the facts.
+            ld.truncate(conn, [*ex.LOAD_ORDER, *metric_tables])
+            loaded["metric_definitions"] = ld.copy_dataframe(
+                conn, "metric_definitions", definitions
+            )
+            loaded["metric_config"] = ld.copy_dataframe(conn, "metric_config", metric_config)
             for name in ex.LOAD_ORDER:
                 t = time.perf_counter()
                 loaded[name] = ld.copy_dataframe(conn, name, frames[name])
@@ -209,7 +249,13 @@ def benchmark(rows: int = 50_000) -> None:
 
 
 def print_counts() -> None:
-    tables = [*ex.LOAD_ORDER, "data_quality", "data_quality_features"]
+    tables = [
+        *ex.LOAD_ORDER,
+        "data_quality",
+        "data_quality_features",
+        "metric_definitions",
+        "metric_config",
+    ]
     with connect(etl_dsn()) as conn:
         for table, count in ld.row_counts(conn, tables).items():
             print(f"  {table:<22} {count:>9,}")

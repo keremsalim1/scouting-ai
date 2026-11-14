@@ -290,6 +290,20 @@ DATA_QUALITY_COLUMNS: tuple[str, ...] = (
 
 DATA_QUALITY_FEATURE_COLUMNS: tuple[str, ...] = ("run_at", "data_tag", "feature", "status")
 
+METRIC_DEFINITION_COLUMNS: tuple[str, ...] = (
+    "key",
+    "source_column",
+    "label",
+    "definition",
+    "formula",
+    "unit",
+    "higher_is_better",
+    "category",
+    "sort_order",
+)
+
+METRIC_CONFIG_COLUMNS: tuple[str, ...] = ("key", "value")
+
 TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "teams": TEAM_COLUMNS,
     "players": PLAYER_COLUMNS,
@@ -300,6 +314,8 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "passes": PASS_COLUMNS,
     "data_quality": DATA_QUALITY_COLUMNS,
     "data_quality_features": DATA_QUALITY_FEATURE_COLUMNS,
+    "metric_definitions": METRIC_DEFINITION_COLUMNS,
+    "metric_config": METRIC_CONFIG_COLUMNS,
 }
 
 # Load order matters: dimensions before the facts that reference them.

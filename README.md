@@ -10,7 +10,7 @@ reports. A core rule runs through the whole project: **the LLM never produces
 numbers.** Every figure in a report comes from a tool or database query; the
 model only writes the interpretation.
 
-Status: **Day 3 complete — positions mapped, season and per-90 views live.**
+Status: **Day 4 complete — metric definitions and percentiles live.**
 Plan: [docs/PLAN.md](docs/PLAN.md) · Decisions: [DECISIONS.md](DECISIONS.md)
 
 ## Data
@@ -208,6 +208,69 @@ widening happens: the source columns are `float32`, and day 1 summed 20-38
 match values before widening. The views cast to `double precision` *before*
 summing, which reproduces openplay bit for bit. Reproducing the old number by
 deliberately summing in `float32` confirmed it (D-017).
+
+## Day 4 — metrics and percentiles
+
+[config/metrics.yaml](config/metrics.yaml) is the source of truth for **38
+metrics** across 8 categories. Each one declares its definition, formula, unit,
+direction and the column it reads. The ETL validates and loads it into
+`football.metric_definitions` and `football.metric_config`; the
+`football.player_metrics` view computes values and percentiles live, so
+changing a threshold in the yaml changes behaviour without a migration (D-020).
+
+```sql
+select player, value, percentile, comparison_group_size
+from football.player_metrics
+where metric = 'npxg_xa_per90' and comp = 'eng' and position_group = 'W'
+order by percentile desc;
+```
+
+**Percentile method.** Tie-aware midrank, `(players below + half the players
+tied) / n`, oriented so **100 always means "best in the group"** — including
+for `miscontrols_per90` and the other lower-is-better metrics, where the
+percentile is inverted so a radar never has to special-case a direction.
+
+Measured on the smallest real group (n=10):
+
+| | lowest player | highest player |
+| --- | --- | --- |
+| `percent_rank()` | **0.0** | 100.0 |
+| `cume_dist()` | 10.0 | **100.0** |
+| midrank (chosen) | 5.0 | 95.0 |
+
+Neither extreme gets an absolute 0 or 100, because in a finite sample neither
+claim is true. Across all 40 409 rows the range is 0.49 – 99.51, and no two
+players with equal values receive different percentiles.
+
+**Comparison groups.** League + fine position group where possible; where a
+cell is below 20 players, the role is kept and the leagues are pooled; below 20
+even then, no percentile is reported at all and `comparison_scope` reads
+`insufficient`.
+
+| Scope | Rows | Group size |
+| --- | --- | --- |
+| `league_position` | 38 430 | 23 – 82 |
+| `position_pooled` | 1 963 | 25 – 102 |
+| `insufficient` | 16 | 8 |
+
+Pooling leagues rather than widening the role is a deliberate deviation from
+the "same league" rule, made on measured homogeneity (coefficient of variation,
+lower is better):
+
+| Metric | same league + role | pooled leagues + role | same league + broad |
+| --- | --- | --- | --- |
+| `npxg_per90` | 0.932 | **1.264** | 1.399 |
+| `crosses_per90` | 0.918 | **0.938** | 1.012 |
+| `tackles_per90` | 0.525 | **0.518** | 0.687 |
+
+Comparing a Serie A winger to European wingers beats comparing them to Serie A
+forwards. See D-019.
+
+The 16 unranked rows are the 8 goalkeepers who attempted a non-penalty shot:
+`npxg_per_shot` cannot be ranked against a pool of 8.
+
+Ten values were recomputed by hand from `player_match_stats` and all ten
+matched; every one is now a test in `tests/test_metrics_db.py`.
 
 ## Day 1 — data validation
 

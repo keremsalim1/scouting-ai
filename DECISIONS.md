@@ -558,3 +558,93 @@ Gün 1'in `2,86e-08`'i birebir yeniden üretildi. Yani hata ne OpenPlay'de ne fo
 **Neden önemli.** Tek başına 1e-8 önemsiz. Ama Gün 4'te bu toplamların üzerine yüzdelikler, Gün 8'de z-skorlar ve kosinüs benzerliği kurulacak; Gün 17'de rapor sayıları veritabanıyla doğrulanacak. Hesabın tabanını bit düzeyinde tekrar üretilebilir tutmak, sonraki farkların **gerçek** fark olduğunu bilmeyi sağlıyor. Ayrıca D-004'teki "tolerans ±0,01" artık gereksiz cömert: ölçülen fark 0.
 
 **Tarih.** 2026-11-08
+
+---
+
+## D-018: Yüzdelik yöntemi — orta-sıra (midrank), yöne göre çevrilmiş
+
+**Bağlam.** Yüzdelikler Gün 7 radarlarında, Gün 8 benzerliğinde ve Gün 14 scouting raporlarında kullanılacak. En küçük gerçek karşılaştırma grubu 23 kişi, metrik bazında bazı gruplar daha da küçülüyor. Fonksiyon seçimi küçük gruplarda belirleyici.
+
+**Karar.** `(sıradaki konum − 0,5) / n`, berabere duyarlı biçimde:
+`(altındaki oyuncular + 0,5 × berabere oyuncular) / n × 100`.
+SQL'de `percent_rank()` ve `cume_dist()` ikilisiyle ifade ediliyor: `percent_rank × (n−1)` kesin olarak altındakileri, `cume_dist × n` altındaki ve berabereleri sayar; ikisinin ortalaması berabere duyarlı orta-sıradır.
+
+Ayrıca **yüzdelik yöne göre çevrilir**: `higher_is_better = false` olan metriklerde (kötü kontrol, top kaptırma, yapılan faul, hata) `100 − p` uygulanır. Böylece **100 her metrikte "grubun en iyisi"** demektir.
+
+**Değerlendirilen alternatifler.** 10 kişilik gerçek bir grupta (Serie A kanatları) ölçüldü:
+
+| | en düşük oyuncu | en yüksek oyuncu |
+| --- | --- | --- |
+| `percent_rank()` | **0,0** | 100,0 |
+| `cume_dist()` | 10,0 | **100,0** |
+| orta-sıra | 5,0 | 95,0 |
+
+- *`percent_rank()`* — en kötüye tam 0 verir. "0. yüzdelik" oyuncunun kendisi dahil herkesten kötü olduğunu ima eder; sonlu bir örneklemde yanlış bir mutlaklık.
+- *`cume_dist()`* — simetrik olarak en iyiye tam 100 verir, aynı sorun.
+- *`ntile(100)`* — n < 100 olduğunda kovalar boş kalır, sıçramalı sonuç verir.
+- *Ham yüzdeliği verip çevirmeyi tüketiciye bırakmak* — radar çizen her yerde aynı `if` tekrarlanır ve bir yerde unutulursa sessizce ters okunur. Yön bir kez, veri katmanında uygulanır.
+
+**Sonuç/ölçüm.** 40 409 satırda yüzdelik aralığı **0,49 – 99,51**; hiçbir satır 0 veya 100 değil, aralık dışı 0. Beraberlik kontrolü: aynı değere sahip **0** oyuncu çifti farklı yüzdelik almış. Yön kontrolü: `miscontrols_per90`'da en az kötü kontrol yapan (0,084/90) yüzdelik 99,3; en çok yapan (1,222/90) yüzdelik 0,7.
+
+**Tarih.** 2026-11-14
+
+---
+
+## D-019: Karşılaştırma grubu — lig içi rol, yetmezse rolü koruyup ligleri havuzla
+
+**Bağlam.** `CLAUDE.md` yüzdelikleri "aynı lig + aynı pozisyon grubu + minimum dakika" içinde tanımlıyor. Ama Gün 3 ölçümü bazı hücrelerin bunu taşıyamayacak kadar küçük olduğunu gösterdi: Serie A'da DM 10, W 10, AM 14; La Liga'da AM 16 oyuncu. 10 kişilik grupta yüzdelik 10 puanlık adımlarla hareket eder.
+
+**Karar.** Üç kademeli:
+1. **Lig + ince pozisyon grubu** — tercih edilen karşılaştırma.
+2. Hücre `min_group_size`'ın (20) altındaysa → **rolü koru, ligleri havuzla**.
+3. Havuzda bile 20'nin altındaysa → **yüzdelik verilme**, `comparison_scope = 'insufficient'`, `percentile = NULL`. Değer yine de raporlanır.
+
+Her satır `comparison_scope`, `comparison_comp` ve `comparison_group_size` taşır; `CLAUDE.md`'nin scouting kuralı zaten her raporda karşılaştırma grubu büyüklüğünü zorunlu kılıyor.
+
+**Bu, `CLAUDE.md`'deki "aynı lig" kuralından bilinçli bir sapmadır** ve ölçüme dayanır. Varyasyon katsayısı (düşük = havuz rol açısından daha homojen):
+
+| Metrik | aynı lig + ince (ideal) | **tüm ligler + ince** | aynı lig + geniş |
+| --- | --- | --- | --- |
+| `npxg_per90` | 0,932 | **1,264** | 1,399 |
+| `crosses_per90` | 0,918 | **0,938** | 1,012 |
+| `tackles_per90` | 0,525 | **0,518** | 0,687 |
+| `passes_per90` | 0,260 | **0,257** | 0,260 |
+
+Rolü koruyup ligleri havuzlamak **dört metrikte de** ideale daha yakın; `tackles_per90` ve `passes_per90`'da ideali bile geçiyor. Ligi koruyup rolü genişletmek en kötü seçenek. Sezgisel gerekçe: bir Serie A kanadını Serie A forvetleriyle karşılaştırmak, orta yapan bir oyuncuyu bitirici bir oyuncuyla karşılaştırmaktır; Avrupa kanatlarıyla karşılaştırmak benzeri benzerle karşılaştırmaktır.
+
+**Değerlendirilen alternatifler.**
+- *Eşiği düşürüp her hücreyi sıralamak* — 10 kişilik grupta yüzdelik yanlış bir hassasiyet iddiası taşır.
+- *Geniş gruba (GK/DEF/MID/ATT) düşmek* — ölçümde en kötü; Gün 3'te üretilen `position_group_broad` kolonu yine de duruyor, Gün 8 benzerlik havuzu için adayı.
+- *Üç ligi her zaman havuzlamak* — lig stili farkını (Serie A dakikalarının %17,8'i `MC`, PL'de %9,1) tamamen siler.
+
+**Sonuç/ölçüm.** 40 409 satırın dağılımı: `league_position` 38 430 (grup 23–82), `position_pooled` 1 963 (grup 25–102), `insufficient` **16**. Havuza düşen hücreler tam olarak Gün 3'ün işaret ettiği dörtlü (esp AM, ita AM, ita DM, ita W). Yüzdelik verilmeyen 16 satır, penaltı dışı şut çekmiş 8 kalecinin `npxg_per_shot` ve `shot_accuracy_pct` değerleri — 8 kişilik havuz sıralanamaz.
+
+**Tarih.** 2026-11-14
+
+---
+
+## D-020: `config/metrics.yaml` çalışma zamanı sözleşmesidir, dokümantasyon değil
+
+**Bağlam.** `CLAUDE.md`: "Tüm metrikler `config/metrics.yaml`'da tanım, formül, birim ve 'yüksek iyi mi' alanlarıyla tanımlı ve testli olmalı." Böyle bir dosya kolayca **yorum satırına** dönüşür: kod ayrı yerde yaşar, yaml güncellenmez, ikisi sessizce ayrışır.
+
+**Karar.** Yaml çalışma zamanında otoritedir:
+1. `football_ai.metrics` yaml'ı **doğrular** — eksik alan, tanımsız kategori, geçersiz birim, string olarak yazılmış `"false"` (ki truthy'dir ve metriği sessizce ters çevirirdi), tekrar eden anahtar.
+2. ETL doğrulanmış içeriği `football.metric_definitions` ve `football.metric_config` tablolarına yükler.
+3. `football.player_metrics` view'ı eşikleri `metric_config`'ten, yönü ve etiketi `metric_definitions`'tan okur.
+
+Sonuç: yaml'da `min_group_size`'ı değiştirmek migration gerektirmeden davranışı değiştirir. Formül ve tanım metni de veritabanında, yani rapor "bu sayı nasıl hesaplandı" sorusunu SQL ile cevaplayabilir — Gün 14'ün "LLM sayı üretmez" kuralının altyapısı.
+
+**Sapma riski testle kapatıldı.** View'daki `lateral values` listesi elle tutuluyor; üç kaynağın da aynı metrikleri adlandırdığı test ediliyor: yaml ↔ `metric_definitions` ↔ `player_metrics`. Ayrıca her `source_column`'un `player_per90` üzerinde gerçekten var olduğu doğrulanıyor.
+
+**Değerlendirilen alternatifler.**
+- *Metrikleri Python sabiti olarak tutmak* — yaml'ın okunabilirliğini kaybeder; metrik eklemek kod değişikliği olur.
+- *Yaml'dan SQL üretip migration'a gömmek* — yaml dokümantasyona döner, her eşik değişikliği migration gerektirir.
+- *Yüzdelikleri tabloya yazıp ETL'de yenilemek* — bayatlama riski; 1 072 oyuncu × 38 metrik view olarak zaten milisaniyeler içinde hesaplanıyor.
+
+**Sonuç/ölçüm.** 38 metrik, 8 kategori; hepsinde formül, birim, yön ve Türkçe tanım var. `make etl` yaml'ı doğrulayıp yüklüyor. 29 birim testi doğrulayıcıyı, 24 veritabanı testi view'ı sınıyor. Toplam **182 test** yeşil (70 birim + 7 gerçek veri + 105 veritabanı).
+
+**Öğrenilen iki tuzak.**
+1. **Pencere çerçevesi.** `count(*) over w` ifadesinde `w` penceresinde `ORDER BY` varsa varsayılan çerçeve `RANGE UNBOUNDED PRECEDING … CURRENT ROW` olur ve `count(*)` bölümün tamamını değil, **o satıra kadarki koşan sayıyı** döndürür — her grubun en düşük değerli oyuncusu için 1. `percent_rank()`/`cume_dist()` sıralama fonksiyonu oldukları için çerçeveyi yok sayar, bu yüzden yalnızca sayımlar bozuldu ve hata sessiz kaldı. Çözüm: sayım için ayrı, **sırasız** pencere tanımlamak. Regresyon testi eklendi.
+2. **psycopg ve yüzde işareti.** psycopg sorgu metnini **yorumlar dahil** tarar ve çıplak `%` işaretini parametre yer tutucusu sayar. `n % 2` yerine `mod(n, 2)`; `%` karakteri yorumda bile bırakılmamalı.
+
+**Tarih.** 2026-11-14
