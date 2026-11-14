@@ -20,8 +20,8 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA = "football"
 
-# Tables the day-5 SQL allowlist may reference. Kept here so the schema, the
-# ETL and the allowlist cannot drift apart.
+# Base tables the SQL agent may reference. Kept here so the schema, the ETL
+# and the allowlist cannot drift apart; a database test asserts they exist.
 ALLOWED_TABLES: tuple[str, ...] = (
     "teams",
     "players",
@@ -32,7 +32,28 @@ ALLOWED_TABLES: tuple[str, ...] = (
     "passes",
     "data_quality",
     "data_quality_features",
+    "metric_definitions",
+    "metric_config",
 )
+
+# Views the agent may reference. These are the grain scouting questions are
+# actually asked at, so they are listed first in the generated prompt.
+ALLOWED_VIEWS: tuple[str, ...] = (
+    "player_metrics",
+    "player_per90",
+    "player_season",
+    "player_season_club",
+    "position_map",
+)
+
+# Everything the agent is allowed to read. `schema_migrations` is deliberately
+# absent: it is operational metadata, not football data.
+ALLOWED_RELATIONS: tuple[str, ...] = tuple(sorted({*ALLOWED_TABLES, *ALLOWED_VIEWS}))
+
+# Functions declared in migration 002. sqlglot models every standard SQL
+# function we need as a typed node, so these are the only ones that arrive as
+# "unknown" and still have to be permitted.
+ALLOWED_FUNCTIONS: frozenset[str] = frozenset({"position_group", "position_group_broad"})
 
 
 def load_env() -> None:

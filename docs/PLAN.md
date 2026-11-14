@@ -33,7 +33,7 @@ Kaynak: onaylanmış plan dokümanı. Her günün kabul kriteri karşılanmadan 
 | 15 | G−xG, xG/şut, ortalamaya dönüş, şut simülasyonu | `xg_analysis(player)` + şut haritası | Simülasyon ortalaması xG toplamıyla ±%1; hücum yönü doğru |
 | 16 | Ajan değerlendirmesi | 30 görevlik benchmark; Langfuse; `make eval-agent` | Araç seçimi ≥ %85; görev başarısı ≥ %70; adım/süre/maliyet raporlu |
 | 17 | Rapor kalitesi ölçümü | Sayısal doğrulayıcı, zorunlu alan kontrolü, rubrik judge; `make eval-reports` | 20 raporda sayısal doğruluk ≥ %98; zorunlu alanlar %100 |
-| 18 | Hata analizi | En sık 3 hata kategorisini düzelt; README | En az bir metrikte ölçülmüş iyileşme; CI yeşil |
+| 18 | **Gözetimli ML: kendi xG modelin** — özellik mühendisliği, sınıf dengesizliği, kalibrasyon, eğitim/test ayrımı | `ml/xg/`: 2014/15–2024/25 şutlarıyla eğit, 2025–26 ile test; lojistik regresyon (temel) + LightGBM; `make train-xg` | Log loss ve Brier skoru her iki modelde raporlu; kalibrasyon eğrisi çizili; OpenPlay xG ile karşılaştırma tablosu; model 2025–26'da OpenPlay xG'den kötü değilse gerekçesi yazılı |
 
 ## Hafta 4 — Güvenlik temelleri, CI, izleme, yayın → `v1.0`
 
@@ -47,5 +47,14 @@ Kaynak: onaylanmış plan dokümanı. Her günün kabul kriteri karşılanmadan 
 | 24 | Tampon ve kapanış | Eksikler; opsiyonel PitchAPI çapraz kontrolü; CV maddeleri | Tüm çıkış kriterleri yeşil; `v1.0` tag'i |
 
 ## Opsiyonel (MVP'ye bağımlı değil; yalnızca tampon günlerde)
-- Kendi xG modeli (`ml/xg/`): 2014/15–2024/25 şutlarla eğit, 2025–26 ile test; lojistik regresyon + LightGBM; log loss, Brier, kalibrasyon; OpenPlay xG ile karşılaştırma.
 - PitchAPI çapraz kontrolü (20 maç), StatsBomb tarihsel analiz, rol bazlı skor şablonları.
+
+## Plan değişikliği (2026-11-14)
+Kendi xG modeli opsiyonelden çıkarılıp **Gün 18'e sabitlendi** (D-021). Gerekçe: plandaki tek
+gözetimli öğrenme çalışması oydu ve tampon günde kalması "zaman kalırsa" demekti. Yerini aldığı
+"hata analizi" işi Gün 17 (rapor kalitesi ölçümü) ve Gün 20'ye (CI eval gate) dağıtıldı — ikisi de
+zaten hata kategorisi üretip eşiğe bağlıyor, yani ayrı bir güne ihtiyaç yok.
+
+Gün 18 neden oraya uyuyor: Gün 15 zaten xG analizi yapıyor (G−xG, xG/şut, ortalamaya dönüş), yani
+alan bilgisi taze. Değerlendirme için hazır bir referans var — OpenPlay'in kendi xG'si. Ve şut
+verisi 11 sezon geriye gidiyor, bu da gerçek bir eğitim/test ayrımı için yeterli.
