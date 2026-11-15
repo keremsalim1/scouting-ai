@@ -15,7 +15,7 @@ PSQL_USER ?= football_etl
 PSQL_DB ?= football
 
 .PHONY: help db-up db-down db-reset db-shell db-wait migrate etl etl-bench counts \
-        validate test test-data test-db lint fmt check setup
+        ask schema-prompt llm-models validate test test-data test-db lint fmt check setup
 
 help:
 	@echo "setup      db-up + migrate + validate + etl  (first run, from scratch)"
@@ -27,6 +27,9 @@ help:
 	@echo "etl        load OpenPlay 2025/26 into Postgres (full reload)"
 	@echo "etl-bench  measure COPY against pandas.to_sql"
 	@echo "counts     print row counts per table"
+	@echo "ask        natural-language question: make ask Q=\"...\" (needs an LLM key)"
+	@echo "schema-prompt   print the schema description the model is given"
+	@echo "llm-models list the models your API key can actually reach"
 	@echo "validate   regenerate the data validation report and findings"
 	@echo "test       unit tests        test-data  real OpenPlay    test-db  database"
 	@echo "lint fmt   ruff check / ruff format"
@@ -61,6 +64,15 @@ etl-bench:
 
 counts:
 	$(UV) run python scripts/etl.py --counts
+
+ask:
+	$(UV) run python scripts/ask.py $(Q)
+
+schema-prompt:
+	$(UV) run python scripts/ask.py --show-schema
+
+llm-models:
+	$(UV) run python scripts/llm_models.py
 
 validate:
 	$(UV) run python scripts/validate_openplay.py reports

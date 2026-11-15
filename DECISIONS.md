@@ -648,3 +648,119 @@ Sonuç: yaml'da `min_group_size`'ı değiştirmek migration gerektirmeden davran
 2. **psycopg ve yüzde işareti.** psycopg sorgu metnini **yorumlar dahil** tarar ve çıplak `%` işaretini parametre yer tutucusu sayar. `n % 2` yerine `mod(n, 2)`; `%` karakteri yorumda bile bırakılmamalı.
 
 **Tarih.** 2026-11-14
+
+---
+
+## D-021: Kendi xG modeli opsiyonelden çıkıp Gün 18'e sabitlendi
+
+**Bağlam.** Plan gözden geçirildiğinde ortaya çıktı: 24 günün AI içeriği ağırlıklı olarak LLM mühendisliği (text-to-SQL, RAG, ajan). Gözetimli öğrenme — veri hazırlama, eğitim/test ayrımı, kalibrasyon, metrik seçimi — yalnızca opsiyonel xG modelinde vardı ve o da tampon günlere bırakılmıştı, yani "zaman kalırsa" demekti.
+
+**Karar.** xG modeli Gün 18'e sabit iş olarak alındı: `ml/xg/`, 2014/15–2024/25 şutlarıyla eğitim, 2025–26 ile test, lojistik regresyon (temel) + LightGBM, log loss / Brier / kalibrasyon eğrisi, OpenPlay xG ile karşılaştırma. Yerini aldığı "hata analizi" işi Gün 17 (rapor kalitesi ölçümü) ve Gün 20'ye (CI eval gate) dağıtıldı; ikisi de zaten hata kategorisi üretip eşiğe bağlıyor.
+
+**Değerlendirilen alternatifler.**
+- *Opsiyonel bırakmak* — tampon günler dolma eğilimindedir; pratikte hiç yapılmaz.
+- *Gün 15'e eklemek* — Gün 15 zaten xG analizi yapıyor ama tek güne iki iş sığmaz.
+- *Benzerliği (Gün 8) ML çalışması saymak* — z-skor ve PCA gözetimsiz; eğitim, kalibrasyon ve genelleme ölçümü yok.
+
+**Sonuç/ölçüm.** Gün 18 kabul kriteri: her iki modelde log loss ve Brier raporlu, kalibrasyon eğrisi çizili, OpenPlay xG ile karşılaştırma tablosu var. Model OpenPlay'den kötüyse gerekçesi yazılı olacak — "kötü çıktı, atladık" kabul edilmiyor.
+
+**Tarih.** 2026-11-15
+
+---
+
+## D-022: SQL koruması — sqlglot allowlist, ama asıl savunma rol
+
+**Bağlam.** Gün 5'ten itibaren LLM üretimi SQL çalıştırılacak. Gün 19'da 30 saldırgan prompt denenecek.
+
+**Karar.** İki bağımsız katman, ve hangisinin asıl olduğu açıkça yazılı:
+
+1. **`football_ro` rolü (asıl savunma).** `INSERT`/`UPDATE`/`DELETE`/`CREATE`/`DROP` yetkisi yok, sunucu tarafında `statement_timeout` var (D-013). **Bir parser'la tartışılabilir; yetkisi olmayan bir rolle tartışılamaz.**
+2. **sqlglot doğrulayıcı (hızlı başarısızlık).** Ayrıştır veya reddet; tek ifade; **ağacın tamamını tara**, sadece kökü değil; ilişkiler allowlist'te; tanınmayan fonksiyon reddedilir; `LIMIT` zorunlu.
+
+**Tasarımı belirleyen üç probe bulgusu.** Kurallar varsayımla değil, sqlglot'un gerçek çıktısına bakarak yazıldı:
+- **Veri değiştiren CTE'ler kökte `Select` görünüyor.** `with d as (delete ... returning *) select * from d` → root `Select`. Sadece kök tipi kontrol edilseydi geçerdi.
+- **CTE adları `Table` düğümü olarak sayılıyor** — ayıklanmazsa meşru `WITH` sorguları reddedilir.
+- **sqlglot tanımadığı fonksiyonu `Anonymous` yapıyor.** Test edilen 35 meşru analitik fonksiyonun 34'ü tipli düğüm; yalnızca kendi `position_group()` fonksiyonumuz `Anonymous`. Bu, kuralı tersine çevirmeyi mümkün kıldı: **"tanınmayanı reddet"** — denylist değil, yapısal allowlist. `pg_sleep`, `pg_read_file`, `lo_import`, `dblink` ve akla gelmeyen her şey kapsanır. Denylist yalnızca yazarın hatırladığını engeller.
+
+**Değerlendirilen alternatifler.**
+- *Yalnızca rol* — yanlış SQL veritabanına kadar gider, hata mesajı modele yararsız döner, pahalı ama meşru sorgular (LIMIT'siz 1 M satır) engellenmez.
+- *Yalnızca parser* — bir ayrıştırıcı atlatılabilir; tek savunma olamaz.
+- *Regex tabanlı filtre* — yorum, string ve alt sorgu içinde kaçırır; klasik olarak yanlış araç.
+- *Tehlikeli fonksiyon denylist'i* — yalnızca bilinenleri engeller.
+
+**Sonuç/ölçüm.** 36 saldırgan vaka (kriter 20 istiyordu) + 10 meşru sorgu test ediliyor. Saldırılar: düz yazmalar (9), CTE içinde gizli yazmalar (3), ifade yığma (2), kendi korumamızı kapatma (4), futbol dışı veri okuma (8), yan etkili fonksiyonlar (8), bozuk girdi (2). Ayrıca `test_sql_guard_db.py` her saldırının **rol tarafından da** reddedildiğini kanıtlıyor.
+
+**Veritabanının öğrettiği bir ayrıntı.** `GRANT` hata vermiyor: yetkisi olmayan bir rol `GRANT` çalıştırınca PostgreSQL `WARNING: no privileges were granted` deyip **başarı** döndürüyor. Test "hata verdi mi" yerine "yetki kazandı mı" sormalı — ölçüm: `insert/update/delete/truncate` hepsi `false` kaldı. **Hata vermeyen bir ifade, bir şey yaptı demek değil.**
+
+**Tarih.** 2026-11-15
+
+---
+
+## D-023: Şema açıklaması katalogdan üretilir, elle yazılmaz
+
+**Bağlam.** Text-to-SQL'in doğruluğu, modele şemayı nasıl anlattığına bağlı. Elle yazılan şema prompt'ları çürür: migration'da kolon adı değişir, prompt eski adı anlatmaya devam eder, model çalışmayan SQL yazar ve kimse neden olduğunu anlamaz.
+
+**Karar.** `football_ai.sql_agent.schema` her şeyi veritabanından okur: tablo/view listesi (korumanın allowlist'iyle **aynı** liste), kolonlar ve tipleri, view yorumları, **yabancı anahtarlar join ipucu olarak**, ve `metric_definitions`'tan 38 metriğin formülü.
+
+**En çok fark yaratan kısım: düşük kardinaliteli kolonların gerçek değerleri listeleniyor.** `comp` kolonunun `'eng'`, `'esp'`, `'ita'` tuttuğunu bilmeyen model `where comp = 'Premier League'` yazar ve **boş sonuç** alır — bu hatadan beterdir, çünkü hiçbir şey yanlış görünmez. Aynı sebeple 38 metrik anahtarı ve 8 pozisyon grubu da listeleniyor.
+
+Gün 2'de FK'ları bilerek tanımlamıştık (D-008); karşılığı burada alınıyor — join ipuçları katalogdan geliyor, elle yazılmıyor.
+
+**Sonuç/ölçüm.** 18 684 karakter ≈ 4 671 token. Ölçüldü, **kırpılmadı**: şema azaltmak genelde doğruluğu düşürür ve Gün 6 ölçümü olmadan kırpmak yanlış optimizasyon olurdu. Üretim yerel olarak 1,2 saniye sürüyor, süreç başına bir kez.
+
+**Tarih.** 2026-11-15
+
+---
+
+## D-024: Sağlayıcı yüzeyi kararsızdır — uyumsuzlukları sessizce yutma, kaydet
+
+**Bağlam.** Gün 5'te LLM'i bağlarken dört hata arka arkaya geldi ve **hiçbiri testle yakalanamazdı**; kod doğruydu, 180 test yeşildi. Hepsi sağlayıcının gerçek davranışıyla ilgiliydi:
+
+| Hata | Gerçek sebep | Benim ilk tavsiyem |
+| --- | --- | --- |
+| 404 | Model adı emekli olmuş (`gemini-2.5-flash` yeni anahtarlara kapalı) | "Auth hatası olabilir" ❌ |
+| `TimeoutError` çökmesi | `TimeoutError`, `URLError`'ın değil `OSError`'ın alt sınıfı | — |
+| `UnsupportedParamsError` | Gemini 3.x `temperature` kabul etmiyor | — |
+| 503 ×3 + timeout | Model doymuş | "Timeout'u artır" ❌ |
+
+**Karar.**
+- **Model adı sorulur, hatırlanmaz.** `make llm-models` anahtarın eriştiği modelleri listeler **ve gerçekten dener** — `models.list` varlığı söyler, `generateContent` kullanılabilirliği; ikisi aynı şey değil (`gemini-2.5-flash` listede görünüp 404 veriyordu).
+- **Reddedilen parametre düşürülür ama kaydedilir.** LiteLLM'in `drop_params=True` kısayolu kullanılmadı: Gün 6 execution accuracy ölçecek ve `temperature`'ı sessizce düşürülmüş bir koşu, uygulanmış bir koşuyla **karşılaştırılamaz**. `temperature_supported` bayrağı rapora giriyor.
+- **Geçici ile kalıcı ayrılır.** 503/429/502/timeout → 1s, 2s, 4s bekleyip yeniden dene. 404/401/desteklenmeyen parametre → **hemen fırlat**; denemek yalnızca gerçek mesajı geciktirir.
+- **Her çağrı ayrı kaydedilir** (`call_log`). Tek bir toplam süre, "bir yavaş cevap" ile "üç başarısızlık + yeniden deneme"yi ayırt edemez; ikisinin çözümü zıttır.
+- **Teşhis son hataya değil tüm diziye bakar.** Üç 503 sonrası bir timeout, "timeout'u artır" değil "model doymuş" demektir.
+
+**Sonuç/ölçüm.** `gemini-3.8-flash` sürekli 503 veriyordu (40,7 sn → 136 sn → başarısız). `gemini-3.1-flash-lite`: tek çağrı, **4,0 sn**. 40 soruluk Gün 6 benchmark'ı: ~3 dakika vs ~30 dakika. Bu fark, prompt değişikliklerini ölçerek geliştirmeyi mümkün kılan şey.
+
+**Tarih.** 2026-11-15
+
+---
+
+## D-025: Zayıf model, prompt geliştirmek için ölçüm aletidir
+
+**Bağlam.** `gemini-3.8-flash` ile `gemini-3.1-flash-lite` aynı soruya farklı SQL üretti:
+
+```sql
+-- 3.8-flash
+SELECT player, teams, assists FROM football.player_season
+WHERE comp = 'eng' ORDER BY assists DESC LIMIT 5
+-- 3.1-flash-lite
+SELECT player, assists FROM football.player_season
+WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY assists DESC LIMIT 5
+```
+
+İki fark: lite `teams` döndürmedi ve **gereksiz bir dakika filtresi ekledi.**
+
+**Kök neden modelde değil, prompt'ta.** System prompt'ta şu satır vardı: *"When comparing players outside player_metrics, filter `minutes_played >= 900`."* Kural fazla genişti. "En çok asist" bir **toplam** sorusudur; toplam zaten oynama süresini içinde barındırır ve filtre, az dakikada çok üreten oyuncuyu gizler — **tam da bir scout'un görmek istediği oyuncuyu.** Büyük model muhakeme edip kuralı esnetti, lite model harfiyen uyguladı.
+
+**Karar.**
+- **Zayıf model prompt geliştirmenin birincil aletidir.** Güçlü model açıkları muhakemeyle kapatır ve prompt'un eksik olduğunu **söylemez**; sen "prompt iyi" sanırsın, oysa iş gören şey modelin iyi niyetidir. Model değiştiğinde, maliyet düşürüldüğünde veya sağlayıcı modeli emekliye ayırdığında o iyi niyet kaybolur.
+- **Zayıf modelin kötü talimatı harfiyen uygulamasının çözümü güçlü model değil, talimatı düzeltmektir.** Güçlü model yalnızca hatayı örter.
+- **Diferansiyel test:** aynı soruyu iki modele sor; **uyuşmadıkları her yer prompt'un belirsiz olduğu yerdir.** Doğru cevabı bilmeye bile gerek yok.
+- Prompt'ta kural + **örnek** birlikte verilir; örnek daha güçlüdür. Toplam ve oran için ayrı birer few-shot eklendi.
+
+**Sonuç/ölçüm.** Dakika kuralı toplam/oran ayrımıyla yeniden yazıldı, dönülecek kolonlar açıkça belirtildi (oyuncu + kulüp + sorulan sayı + örneklem; `player_metrics` için ayrıca `comparison_group_size`), iki yeni few-shot eklendi. Aynı lite model düzeltmeden sonra **iki soruyu da doğru** yanıtladı: toplam sorusunda filtre yok, oran sorusunda `minutes_played >= 900` var, ikisinde de `teams` dönüyor.
+
+**Gün 6'ya etkisi.** "Execution accuracy" tek başına yetersiz — iki sorgu da çalışıyordu. Benchmark dört boyut ölçecek: çalışıyor mu, sonuç kümesi referansla aynı mı, zorunlu kolonlar var mı, yasaklı yapı yok mu. Dördüncüsü kritik: bazı hatalar **doğru sonuç verir ama yanlış sebeple** — bu soruda dakika filtresi cevabı değiştirmedi (ilk beş zaten 900+ oynamıştı), başka bir soruda değiştirirdi.
+
+**Tarih.** 2026-11-15

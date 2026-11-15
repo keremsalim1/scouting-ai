@@ -72,6 +72,7 @@ Tam liste: `make help`. Windows'ta `uv` PATH'te değilse `make UV="$APPDATA/Pyth
 - `make validate` — veri doğrulama raporu + Gün 2–4 bulguları
 - `make migrate` / `make etl` / `make counts` / `make etl-bench`
 - `make db-up` / `make db-down` / `make db-reset` / `make db-shell`
+- `make ask Q="..."` — doğal dil sorusu (LLM anahtarı gerekir) · `make schema-prompt` · `make llm-models`
 - `make lint` / `make fmt` / `make check`
 - `make eval-sql`, `make eval-rag`, `make eval-agent`, `make eval-reports` — ileride
 
@@ -108,10 +109,22 @@ Ayrıntılı gerekçeler D-014…D-017.
 - **`count(*) over w` tuzağı:** `w` penceresinde `ORDER BY` varsa çerçeve `RANGE UNBOUNDED PRECEDING … CURRENT ROW` olur ve koşan sayı döner. Sayım için ayrı, **sırasız** pencere kullan.
 - **psycopg tuzağı:** sorgu metnindeki çıplak `%` (yorumlar dahil) parametre yer tutucusu sayılır; `mod()` kullan.
 
+## Text-to-SQL (Gün 5)
+Gerekçeler D-022…D-025.
+- İki katman: **asıl savunma `football_ro` rolü**, sqlglot doğrulayıcı hızlı başarısızlık için. Parser'la tartışılabilir, yetkisi olmayan rolle tartışılamaz.
+- Doğrulayıcı: tek ifade; **ağacın tamamı taranır** (veri değiştiren CTE kökte `Select` görünür); ilişki allowlist'i; **tanınmayan fonksiyon reddedilir** (yapısal allowlist, denylist değil); `LIMIT` zorunlu.
+- Şema prompt'u **katalogdan üretilir** (`make schema-prompt`), elle yazılmaz. Düşük kardinaliteli kolonların gerçek değerleri listelenir — `comp = 'Premier League'` sessiz boş sonuç verir, hatadan beterdir.
+- **Model adı sorulur, hatırlanmaz:** `make llm-models`. `models.list` varlığı, `generateContent` kullanılabilirliği söyler; ikisi aynı değil.
+- Reddedilen parametre (`temperature`) düşürülür **ama bayrağa kaydedilir** — sessiz düşürme eval'i karşılaştırılamaz yapar.
+- Geçici (503/429/timeout) yeniden denenir, kalıcı (404/401) hemen fırlatılır. Teşhis **son hataya değil tüm çağrı dizisine** bakar.
+- **Dakika filtresi soruya bağlı:** oran sorularında `>= 900`, **toplam sorularında yok** (toplam zaten süreyi içerir; filtre az dakikada çok üreteni gizler).
+- **Zayıf model prompt geliştirmenin aletidir.** Güçlü model açığı muhakemeyle kapatır ve prompt'un eksik olduğunu söylemez. İki modeli aynı soruya koş: **uyuşmadıkları yer prompt'un belirsiz olduğu yerdir.**
+
 ## Durum
 - [x] Gün 0: plan onaylandı
 - [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`
 - [x] Gün 2: PostgreSQL + pgvector, idempotent ETL — satır sayıları kaynakla birebir
 - [x] Gün 3: position_map + season/per-90 view'ları — per-90 OpenPlay ile farkı 0
 - [x] Gün 4: `config/metrics.yaml` (38 metrik) + yüzdelikler — 10 elle kontrol doğru, 182 test yeşil
-- [ ] Gün 5: güvenli text-to-SQL (sqlglot allowlist, salt-okunur rol, timeout)
+- [x] Gün 5: güvenli text-to-SQL — 36 saldırgan vakada zararlı sorgu 0, uçtan uca çalışıyor
+- [ ] Gün 6: 40 soruluk benchmark, `make eval-sql`, GitHub Actions
