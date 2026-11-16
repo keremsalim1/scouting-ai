@@ -1,0 +1,97 @@
+# CI for Football Intelligence AI.
+#
+# Three jobs, and the important thing is what the third one does NOT do: it
+# never calls an LLM. A provider 503 turning a pull request red would make the
+# signal useless, so the benchmark itself stays local (`make eval-sql`) and CI
+# validates the gold set instead.
+#
+# The gold job also skips the ETL. `EXPLAIN` checks a query against the real
+# schema without reading a single row, so a migrated-but-empty database is
+# enough to catch a renamed column, a dropped view or a reference query that
+# stopped parsing - which is the whole class of failure that silently turns
+# into a lower accuracy number. OpenPlay's parquet files never enter git, and
+# downloading them here would add minutes and a network dependency to answer a
+# question the local run already answers.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.9.9"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      # pyproject's addopts already excludes the `data` and `db` markers, so
+      # this needs neither the OpenPlay download nor a database.
+      - run: uv run pytest
+
+  gold:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: football
+          POSTGRES_USER: football_etl
+          POSTGRES_PASSWORD: ci_only_password
+          # Same deterministic collation as infra/docker-compose.yml: ORDER BY
+          # on player names must not depend on the runner's locale.
+          POSTGRES_INITDB_ARGS: "--locale=C.UTF-8 --encoding=UTF8"
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U football_etl -d football"
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # db.load_env() is load_dotenv(..., override=False), so a missing .env is
+      # not an error and real environment variables win. No file is written.
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: football
+      POSTGRES_USER: football_etl
+      POSTGRES_PASSWORD: ci_only_password
+      POSTGRES_RO_USER: football_ro
+      POSTGRES_RO_PASSWORD: ci_only_ro_password
+      POSTGRES_RO_STATEMENT_TIMEOUT_MS: "5000"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --locked
+      # Migrations create the schema, the views and the grants for
+      # football_ro, so the read-only role can EXPLAIN every relation.
+      - name: Apply migrations (no ETL)
+        run: uv run python scripts/migrate.py
+      - name: Validate the text-to-SQL gold set
+        run: make eval-sql-gold
