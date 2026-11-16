@@ -127,6 +127,13 @@ def test_load_reads_a_yaml_file(tmp_path):
     assert [q.id for q in gs.questions] == ["totals-01"]
 
 
+def test_the_shipped_gold_set_loads():
+    """No database needed: a malformed questions.yaml fails the default run."""
+    gs = goldset.load()
+    assert len(gs.questions) == 40
+    assert len({q.id for q in gs.questions}) == 40
+
+
 def test_load_rejects_a_yaml_document_that_is_not_a_list(tmp_path):
     path = tmp_path / "questions.yaml"
     path.write_text("questions: []\n", encoding="utf-8")
