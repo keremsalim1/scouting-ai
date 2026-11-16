@@ -84,11 +84,19 @@ validate:
 
 # The benchmark itself is local: it needs an API key and a loaded database, and
 # a provider 503 must never turn a pull request red. CI runs eval-sql-gold.
+#
+# The models are variables because the newest flash model is the most contended
+# one: gemini-3.8-flash returned 503 on 2 of 5 questions when this was wired
+# up, which is an unusable measurement. Override per run rather than editing a
+# recipe:  make eval-sql-both MODEL_STRONG=gemini/gemini-3.5-flash
+MODEL_STRONG ?= gemini/gemini-3.6-flash
+MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
+
 eval-sql:
-	$(UV) run python scripts/eval_sql.py
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG)
 
 eval-sql-both:
-	$(UV) run python scripts/eval_sql.py --models gemini/gemini-3.8-flash,gemini/gemini-3.1-flash-lite
+	$(UV) run python scripts/eval_sql.py --models $(MODEL_STRONG),$(MODEL_WEAK)
 
 eval-sql-gold:
 	$(UV) run python scripts/eval_sql_gold.py

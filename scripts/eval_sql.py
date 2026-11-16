@@ -137,7 +137,9 @@ def main(argv: list[str] | None = None) -> int:
     run_id = suites[0].run_id
     json_path = out_dir / f"{run_id}.json"
     md_path = out_dir / f"{run_id}.md"
-    json_path.write_text(report.to_json(suites), encoding="utf-8")
+    # Trailing newline so the end-of-file-fixer hook does not rewrite every
+    # report the moment it is committed.
+    json_path.write_text(report.to_json(suites) + "\n", encoding="utf-8")
     markdown = report.to_markdown(suites, threshold=args.threshold)
     md_path.write_text(markdown, encoding="utf-8")
     LATEST_REPORT.parent.mkdir(parents=True, exist_ok=True)

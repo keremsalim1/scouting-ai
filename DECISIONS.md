@@ -764,3 +764,75 @@ WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY assists DESC LIMIT 5
 **Gün 6'ya etkisi.** "Execution accuracy" tek başına yetersiz — iki sorgu da çalışıyordu. Benchmark dört boyut ölçecek: çalışıyor mu, sonuç kümesi referansla aynı mı, zorunlu kolonlar var mı, yasaklı yapı yok mu. Dördüncüsü kritik: bazı hatalar **doğru sonuç verir ama yanlış sebeple** — bu soruda dakika filtresi cevabı değiştirmedi (ilk beş zaten 900+ oynamıştı), başka bir soruda değiştirirdi.
 
 **Tarih.** 2026-11-15
+
+---
+
+## D-026: Hakem sonuç kümesidir; doğruluk dört boyutta ölçülür
+
+**Bağlam.** Gün 5 güvenliği ölçtü, doğruluğu ölçmedi. "Çalışıyor" demek birkaç soruyu elle deneyip makul görmekten ibaretti. Benchmark kurmak için önce "doğru" kelimesinin tanımı gerekiyordu.
+
+**Karar.**
+- **Hakem sonuç kümesi eşitliğidir, SQL metni değil.** Model referanstan tamamen farklı yazıp aynı satırları döndürdüyse cevap doğrudur. SQL metnini karşılaştırmak prompt'u değil benim yazım tarzımı ölçer.
+- Kolonlar **sıraya göre**, isme göre değil (model `value`'yu `npxg_per90` diye adlandırabilir). Referansın kolonları bir **önek** olarak bulunmak zorunda; **fazlası hata değil** — prompt zaten "kulübü ve örneklemi de döndür" diyor, fazlalığı cezalandırmak talimatı cezalandırmak olur.
+- Sayılar **bağıl toleransla** (`1e-6`, 1'de tabanlanmış): psycopg `numeric`'i `Decimal`, `double precision`'ı `float` veriyor, aynı per-90 değeri hangi view'dan geldiğine göre iki farklı tip olarak dönüyor. Aralarında `==` son bite oynanan bir kumardır.
+- `bool` sayısal yoldan **ayrı tutulur**: Python'da `True == 1`, yani boolean bir kolon bir sayımla sessizce eşleşirdi.
+- Satırlar yalnız **soru sıraya duyarlı değilse** sıralanır, ve çoklu küme olarak (kopyalar korunur). Sıralama anahtarı NULL'ları ve karışık tipleri ayrı sıralara koyar — oran metriklerimiz payda 0'da NULL döndürüyor ve NULL'u bir dizeyle karşılaştırmak `TypeError` fırlatır, yani koşu 23. soruda ölürdü.
+
+**Dört boyut.** Sonuç eşitliği tek başına "doğru sayıyı yanlış mantıkla üretmeyi" kaçırıyor (D-025'teki dakika filtresi tam olarak böyleydi). Her soru ayrı ayrı puanlanır:
+
+| Boyut | Sorduğu | Yakaladığı |
+| --- | --- | --- |
+| `executes` | guard'dan ve veritabanından geçti mi | uydurulmuş kolon |
+| `correct` | sonuç kümesi referansla aynı mı | asıl doğruluk (eşik buna) |
+| `required_columns` | çıktı kullanılabilir mi | grup büyüklüğü olmayan yüzdelik |
+| `no_forbidden` | doğru yoldan mı geldi | toplam sorusunda 900 dakika filtresi |
+
+**Alternatifler.** (a) Yalnız execution accuracy — Gün 5'te iki sorgu da çalışıyordu, biri yanlıştı; ölçüm kör. (b) SQL dizesi karşılaştırma — reddedildi, yukarıda. (c) LLM-as-judge — ölçmek istediğimiz şeyi ölçen aracı aynı aileden bir modele bırakmak; ayrıca deterministik değil.
+
+**Sonuç/ölçüm.** 40 soru, 8 kategori, 36 referans sorgu (4 `unanswerable` kategorisinde referans yok). Gold set'in kendi doğrulaması (`make eval-sql-gold`) ilk koşusunda **kendi yazdığım gold set'te 5 hata buldu:** bir referans yasakladığı view'ı alt sorguda kullanıyordu, ikisi eşitlik sınırında kesiyordu (iki farklı cevap da doğru, karşılaştırıcı ayırt edemez), ikisi `desc` sıralamada NULL'ları "en yüksek" sanıyordu — Postgres `desc`'te NULL'ları başa koyuyor.
+
+**Tarih.** 2026-11-16
+
+---
+
+## D-027: CI deterministik kalır; LLM eval yerelde koşar
+
+**Bağlam.** Gün 6'nın iki müşterisi var: teşhis (hangi soru tipini yanlış anlıyor) ve regresyon koruması (prompt değişikliği dünü bozdu mu). İkincisi CI'a bakar, ama 40 soruluk bir LLM koşusunu her PR'da koşturmak API anahtarı, para ve 503 riski demek.
+
+**Karar.** GitHub Actions'ta **LLM çağrısı yok**. Üç iş: `lint`, `test` (birim testler; `addopts` zaten `data` ve `db` işaretlilerini dışlıyor), `gold`.
+
+`gold` işi pgvector servisi başlatır, **migration'ları uygular, ETL çalıştırmaz**, sonra 40 referans SQL'i guard'dan geçirip `EXPLAIN` ile doğrular.
+
+**Can alıcı nokta:** `EXPLAIN` veri olmadan çalışır ama şemaya karşı **tam** doğrulama yapar. Olmayan kolon, silinmiş view, parse edilemez hale gelmiş referans — hepsi yakalanır. Bu tam olarak sessizce "daha düşük doğruluk oranı"na dönüşen hata sınıfıdır.
+
+**Alternatifler.** (a) CI'da release'ten OpenPlay indirip ETL koşmak: birkaç dakika ve bir ağ bağımlılığı ekliyor, karşılığında yalnız "sayılar hâlâ aynı mı" sorusunu cevaplıyor — onu yerel koşu zaten cevaplıyor. (b) Katalog anlık görüntüsünü commit'leyip ona karşı doğrulamak: anlık görüntünün kendisi sürüklenir. (c) CI'da LLM: sağlayıcı 503'ü PR'ı kırmızı yapar, sinyal kullanılamaz hale gelir.
+
+**Sonuç/ölçüm.** Yerelde atılabilir boş bir veritabanıyla doğrulandı (yalnız migration, ETL yok): şema kontrolleri **36/36** geçti. Sonra bir referanstaki kolon adı bozuldu ve iş **`totals-01`'i adıyla söyleyerek başarısız oldu** — yani sürüklenme gerçekten yakalanıyor. Probe veritabanı silindi.
+
+**Tarih.** 2026-11-16
+
+---
+
+## D-028: Eşik güçlü modele uygulanır; zayıf model teşhis aletidir
+
+**Bağlam.** Plandaki kabul kriteri "execution accuracy ≥ %70". İki model koşuyorsa eşik hangisine uygulanır?
+
+**Karar.** Eşik **yalnız güçlü modele** uygulanır (`--models` listesinin ilki; `make eval-sql`'in çıkış kodu buna bakar). Zayıf modelin puanı raporlanır ama kapı değildir.
+
+**Gerekçe.** D-025'te kurulan ayrım: zayıf model prompt'un belirsiz olduğu yeri gösteren alet, ürünün kalite çıtası değil. Zayıf modeli eşiğe tabi tutmak iki şeyi birbirine karıştırır ve prompt'u zayıf modele göre aşırı uydurmaya (overfit) iter. Tersi — eşiği zayıf modelden kaldırmak — teşhisi kaybeder.
+
+**Sonuç/ölçüm (2026-11-16).** **Kriter karşılanmadı ve usulünce ölçülemedi.**
+
+Ölçülen: `gemini/gemini-3.1-flash-lite`, 40 soru, 279 sn, **0 altyapı hatası**, doğruluk **%52,8 (19/36)**. Payda 36: 4 `unanswerable` sorusunun referans sonuç kümesi yok.
+
+Ölçülemeyen: güçlü model. O gün dört adayın hepsi erişilemezdi — `gemini-3.8-flash` ve `3.7-flash` 503 (doygunluk), `3.6-flash` ve `3.5-flash` ~15 soru sonra ücretsiz katman günlük kotasını tüketti (RateLimitError). İlk `3.6-flash` denemesi 40 sorudan yalnız 9'unu puanlanabilir bıraktı; altyapı hatası oranı %10 uyarı eşiğinin çok üstünde olduğu için rapor o koşuyu "karşılaştırılabilir değil" diye işaretledi — tasarımın tam olarak öngördüğü davranış.
+
+**Kategori kırılımı (zayıf model):** `teams` %100, `filters` %100, `percentiles` %80, `totals` %40, `transfers` %40, `rates` %17, `match_detail` %0.
+
+Teşhisin değeri burada: geliştiricinin önceden "bunlara takılır" dediği iki kategori (oranlar, takım değiştirenler) gerçekten en zorlar arasında, ama **`match_detail` %0'ı kimse öngörmedi** — ve şema prompt'unun en az şey söylediği kategori o.
+
+**Yan ölçüm — onarım döngüsü.** `generate.py` guard reddinde bir kez daha deniyor ve docstring'i "Gün 6 bunun işe yarayıp yaramadığını ölçer" diyordu. Ölçüldü: 38 soru ilk denemede geçti, **0 soru onarımla düzeldi**, 2 soru onarımdan sonra da reddedildi. Yani onarım denemesi 40 soruda bir kez bile reddi çalışan bir sorguya çevirmedi. Güçlü modelde tekrar ölçülmeden kaldırılmamalı.
+
+**Yan ölçüm — D-025 kalıcı mı?** Evet. 40 sorunun hiçbirinde yasak yapı ihlali yok (`no_forbidden` her kategoride tam). Dakika kuralının toplam/oran ayrımı, kuralı ilk kez açığa çıkaran modelde bile tutuyor.
+
+**Tarih.** 2026-11-16

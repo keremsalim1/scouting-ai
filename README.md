@@ -82,6 +82,12 @@ Run `make help` for the current list.
 | `make etl-bench` | measure `COPY` against `pandas.to_sql` |
 | `make counts` | row counts per table |
 | `make validate` | regenerate the data validation report and findings |
+| `make ask Q="..."` | natural-language question (needs an LLM key) |
+| `make schema-prompt` | print the schema description the model is given |
+| `make llm-models` | list the models your API key can actually reach |
+| `make eval-sql` | 40-question text-to-SQL benchmark (LLM key + loaded db) |
+| `make eval-sql-both` | same, strong + weak model, with a disagreement table |
+| `make eval-sql-gold` | validate the gold set: guard + `EXPLAIN`, no LLM (what CI runs) |
 | `make test` | unit tests (no database, no dataset) |
 | `make test-data` | tests against the real OpenPlay dataset |
 | `make test-db` | tests against the loaded database |
@@ -271,6 +277,135 @@ The 16 unranked rows are the 8 goalkeepers who attempted a non-penalty shot:
 
 Ten values were recomputed by hand from `player_match_stats` and all ten
 matched; every one is now a test in `tests/test_metrics_db.py`.
+
+## Day 6 — text-to-SQL accuracy
+
+Gold set: [evals/sql/questions.yaml](evals/sql/questions.yaml) — 40 questions in
+8 categories, each with a reference query written and verified by hand against
+the loaded database. Latest report:
+[reports/eval_sql_latest.md](reports/eval_sql_latest.md).
+
+The judge is the **result set**, not the SQL text: a query written nothing like
+the reference that returns the same rows is a correct answer. Four dimensions
+are scored separately, because a single accuracy number hides four failures
+that need four different fixes — did it run, are the rows right, is the output
+usable (a percentile with no comparison group size is not), and was the number
+reached the right way (a 900-minute filter on a question about season totals can
+return identical rows and still be wrong reasoning).
+
+### Where it stands
+
+| | |
+| --- | --- |
+| Run | `gemini/gemini-3.1-flash-lite`, 2026-11-16, 279 s, 0 infrastructure errors |
+| Accuracy | **52.8%** (19 of 36) — **below the 70% target** |
+| Denominator | 36 of 40; the 4 `unanswerable` questions have no reference result set |
+| Strong model | **not measured** — see below |
+
+**The target is not met and not yet properly measured.** The threshold applies
+to the strong model, and every candidate was unavailable on the day this ran:
+`gemini-3.8-flash` and `3.7-flash` returned 503 (saturation), `3.6-flash` and
+`3.5-flash` exhausted the free-tier daily quota after ~15 questions. The number
+above is the **weak** model, which the design treats as a diagnostic rather
+than a gate (D-028). A strong-model run is the first thing Day 7 owes.
+
+### Accuracy by category
+
+| Category | n | correct | ran | required columns | no forbidden structure |
+| --- | --- | --- | --- | --- | --- |
+| `teams` | 5 | 100% | 5/5 | 5/5 | 5/5 |
+| `filters` | 5 | 100% | 5/5 | 5/5 | 5/5 |
+| `percentiles` | 5 | 80% | 5/5 | 5/5 | 5/5 |
+| `totals` | 5 | 40% | 5/5 | 5/5 | 5/5 |
+| `transfers` | 5 | 40% | 5/5 | 3/5 | 5/5 |
+| `rates` | 6 | 17% | 6/6 | 2/6 | 6/6 |
+| `match_detail` | 5 | 0% | 3/5 | 5/5 | 5/5 |
+| `unanswerable` | 4 | n/a | 4/4 | 4/4 | 4/4 |
+
+This table is the point of the whole exercise. The two categories the developer
+guessed would be hardest — ratios and transferred players — are indeed 17% and
+40%. But `match_detail` at 0% was not predicted by anyone, and it is the
+category the schema prompt says least about.
+
+One number is better than expected: **no question in any category violated a
+forbidden structure.** The over-broad minutes rule that D-025 found and fixed
+has stayed fixed, including in the model that originally exposed it.
+
+### The three most common failures
+
+**1. Dropping the context columns the prompt asks for — 6 of 17 wrong answers**
+(`totals-02`, `totals-05`, `transfers-01`, `transfers-02`, `transfers-04`,
+`match_detail-01`). The prompt says to return the sample a ranking rests on
+(`minutes_played`, `matches`) and the club alongside the player. The model
+returns three columns where the reference has five:
+
+```sql
+-- asked: La Liga'da en çok sarı kart gören 7 oyuncu
+SELECT player, teams, yellow_cards FROM football.player_season
+WHERE comp = 'esp' ORDER BY yellow_cards DESC LIMIT 7
+```
+
+The seven names and seven numbers are right. Measured rather than assumed: when
+those six are re-scored against only the columns the model chose to return,
+**three become correct** (`totals-02`, `totals-05`, `transfers-02`) and three
+are wrong anyway. So this failure class costs 3 questions — 52.8% would be
+61.1% — and the remaining gap is real.
+
+That the comparison conflates "the right answer" with "the right output shape"
+is a known property of the prefix rule, not an accident: the reference's
+columns must appear as a prefix, extra trailing columns are free. It is worth
+revisiting whether the context columns belong in `required_columns` alone.
+
+**2. Dropping the sample column on rate questions — 4 of 17**
+(`rates-02`, `rates-03`, `rates-04`, `rates-06`). Same root cause as (1) but
+concentrated: `required_columns` is 2/6 in `rates`, so four of the six rate
+questions came back without `minutes_played`. A per-90 value without the
+minutes behind it is the exact number a scouting report is not allowed to
+print.
+
+**3. Not knowing which relation holds a column — 2 of 17**
+(`match_detail-03`, `match_detail-04`). Both failed at the database, not at the
+guard:
+
+```
+column "player" does not exist
+LINE 1: SELECT player, team_id, xg, mat...
+```
+
+`football.shots` carries `player_id`, not `player`; the name lives in
+`football.players` and needs a join. The schema prompt lists both relations and
+the declared foreign keys between them, so the information was present and the
+model did not use it. These two are the clearest prompt-improvement target in
+the whole run.
+
+### The repair loop does not help
+
+`generate.py` retries once with the guard's refusal reason attached, and its own
+docstring said Day 6 would measure whether that is worth the latency. It is not:
+
+| | |
+| --- | --- |
+| Passed on the first attempt | 38 |
+| Fixed by the repair attempt | **0** |
+| Still refused after the repair | 2 |
+
+Zero out of 40. In this run the repair attempt never converted a refusal into a
+working query, which is evidence for the comment's original guess — a model that
+could not use the refusal reason the first time repeats itself. Worth
+re-measuring on the strong model before removing it.
+
+### What CI checks
+
+`make eval-sql-gold` runs on every push and calls no LLM. It validates the gold
+set against the live schema with `EXPLAIN` on a migrated-but-empty database, so
+a renamed column fails a pull request without an OpenPlay download and without
+a provider outage ever turning the build red.
+
+Six checks, and they earned their place immediately: on their first run they
+found **five defects in the gold set this developer had just written** — a
+reference that used the view it forbade, two that cut on a tie (where two
+different answers are both correct and the comparator cannot tell), and two
+that ranked by a `DESC` column containing NULLs, which Postgres sorts *first*.
 
 ## Day 1 — data validation
 
