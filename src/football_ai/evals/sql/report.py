@@ -1,0 +1,371 @@
+"""Turn one or more runs into a JSON record and a Markdown report.
+
+The report is written to be read by someone deciding what to fix next, so the
+category table comes before anything else: "ratios 40%, totals 95%" names the
+part of the prompt that is missing, while a single overall number names
+nothing.
+
+Three things the report must never hide:
+
+* **The denominator.** `unanswerable` questions, provider failures and broken
+  reference queries all leave it. A shrinking denominator that is not printed
+  turns a bad run into a good-looking one.
+* **A broken gold set.** A reference query that stopped working gets its own
+  heading naming the gold set, not a line in the model's error list.
+* **Dropped parameters.** Gemini 3.x refuses `temperature`; a run where it was
+  silently dropped is not comparable with one where it applied.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+
+from football_ai.evals.sql.runner import QuestionResult, SuiteResult
+
+# Above this share of infra errors the run is noise, not a measurement.
+INFRA_ERROR_WARNING_RATIO = 0.10
+
+DIMENSIONS = ("correct", "executes", "required_columns", "no_forbidden")
+
+
+@dataclass(frozen=True)
+class Scores:
+    scored: int
+    correct: int
+    executes: int
+    required_columns: int
+    no_forbidden: int
+    infra_errors: int
+    reference_failures: int
+    total: int
+
+    @property
+    def accuracy(self) -> float | None:
+        """`correct / scored`, or None when nothing could be scored."""
+        if self.scored == 0:
+            return None
+        return self.correct / self.scored
+
+    @property
+    def infra_error_ratio(self) -> float:
+        if self.total == 0:
+            return 0.0
+        return self.infra_errors / self.total
+
+
+@dataclass(frozen=True)
+class Disagreement:
+    id: str
+    category: str
+    question: str
+    verdicts: dict[str, bool | None]
+    relations: dict[str, str | None]
+
+
+def score(results: Sequence[QuestionResult]) -> Scores:
+    """Count the four dimensions over the questions that can be scored."""
+    # A question counts towards accuracy only when it produced a verdict, and
+    # `correct is None` is exactly that condition: it covers all three
+    # exclusions at once - unanswerable, provider failure, broken reference.
+    scorable = [r for r in results if r.correct is not None]
+    return Scores(
+        scored=len(scorable),
+        correct=sum(1 for r in scorable if r.correct),
+        executes=sum(1 for r in results if r.executes),
+        required_columns=sum(1 for r in results if r.required_columns),
+        no_forbidden=sum(1 for r in results if r.no_forbidden),
+        infra_errors=sum(1 for r in results if r.infra_error),
+        reference_failures=sum(1 for r in results if r.reference_failed),
+        total=len(results),
+    )
+
+
+def by_category(suite: SuiteResult) -> dict[str, Scores]:
+    """Scores per category, in the order the categories first appear."""
+    grouped: dict[str, list[QuestionResult]] = {}
+    for result in suite.results:
+        grouped.setdefault(result.category, []).append(result)
+    return {name: score(items) for name, items in grouped.items()}
+
+
+def disagreements(a: SuiteResult, b: SuiteResult) -> tuple[Disagreement, ...]:
+    """Questions both suites ran where the two models reached different verdicts.
+
+    This is the list day 5 said to look at: where a strong and a weak model
+    disagree is where the prompt is ambiguous.
+    """
+    by_id_b = {r.id: r for r in b.results}
+    found: list[Disagreement] = []
+    for left in a.results:
+        right = by_id_b.get(left.id)
+        if right is None or left.correct == right.correct:
+            continue
+        found.append(
+            Disagreement(
+                id=left.id,
+                category=left.category,
+                question=left.question,
+                verdicts={a.model: left.correct, b.model: right.correct},
+                relations={a.model: left.generated_sql, b.model: right.generated_sql},
+            )
+        )
+    return tuple(found)
+
+
+# ---------------------------------------------------------------------------
+# JSON
+# ---------------------------------------------------------------------------
+
+
+def _jsonable(value: object) -> object:
+    """psycopg hands back Decimal, date and datetime; none are JSON types."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, (dt.date, dt.datetime, dt.time)):
+        return value.isoformat()
+    return str(value)
+
+
+def _result_payload(result: QuestionResult) -> dict:
+    return {
+        "id": result.id,
+        "category": result.category,
+        "question": result.question,
+        "model": result.model,
+        "generated_sql": result.generated_sql,
+        "executes": result.executes,
+        "correct": result.correct,
+        "required_columns": result.required_columns,
+        "no_forbidden": result.no_forbidden,
+        "infra_error": result.infra_error,
+        "reference_failed": result.reference_failed,
+        "repairs_used": result.repairs_used,
+        "structure_differs": result.structure_differs,
+        "reason": result.reason,
+        "seconds": round(result.seconds, 3),
+        "reference_rows": [[_jsonable(c) for c in row] for row in result.reference_rows],
+        "candidate_rows": [[_jsonable(c) for c in row] for row in result.candidate_rows],
+    }
+
+
+def _scores_payload(scores: Scores) -> dict:
+    return {
+        "scored": scores.scored,
+        "total": scores.total,
+        "correct": scores.correct,
+        "executes": scores.executes,
+        "required_columns": scores.required_columns,
+        "no_forbidden": scores.no_forbidden,
+        "infra_errors": scores.infra_errors,
+        "reference_failures": scores.reference_failures,
+        "accuracy": scores.accuracy,
+    }
+
+
+def to_json(suites: Sequence[SuiteResult]) -> str:
+    payload = {
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
+        "suites": [
+            {
+                "run_id": suite.run_id,
+                "model": suite.model,
+                "started_at": suite.started_at.isoformat(),
+                "seconds": round(suite.seconds, 3),
+                "temperature_supported": suite.temperature_supported,
+                "reasoning_effort_supported": suite.reasoning_effort_supported,
+                "retries_used": suite.retries_used,
+                "scores": _scores_payload(score(suite.results)),
+                "scores_by_category": {
+                    name: _scores_payload(s) for name, s in by_category(suite).items()
+                },
+                "results": [_result_payload(r) for r in suite.results],
+            }
+            for suite in suites
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Markdown
+# ---------------------------------------------------------------------------
+
+
+def _pct(value: float | None) -> str:
+    return "n/a" if value is None else f"%{value * 100:.1f}"
+
+
+def _fmt_rows(rows: tuple[tuple, ...]) -> str:
+    if not rows:
+        return "_(satır yok)_"
+    return "\n".join("  - " + " | ".join(str(_jsonable(cell)) for cell in row) for row in rows)
+
+
+def _suite_section(suite: SuiteResult, threshold: float) -> list[str]:
+    scores = score(suite.results)
+    lines = [
+        f"## {suite.model}",
+        "",
+        f"- Koşu: `{suite.run_id}` ({suite.seconds:.0f} sn)",
+        f"- **Doğruluk: {_pct(scores.accuracy)}** "
+        f"({scores.correct}/{scores.scored} puanlanabilir soru, toplam {scores.total})",
+    ]
+
+    if scores.accuracy is None:
+        lines.append(f"- Eşik {_pct(threshold)}: **değerlendirilemedi** (puanlanabilir soru yok)")
+    else:
+        met = "geçti" if scores.accuracy >= threshold else "**geçemedi**"
+        lines.append(f"- Eşik {_pct(threshold)}: {met}")
+
+    # Each cause needs a different fix - rewrite the gold set, wait for the
+    # provider, or nothing at all - so they are counted separately instead of
+    # printed as one "excluded" total.
+    excluded = scores.total - scores.scored
+    unanswerable = excluded - scores.infra_errors - scores.reference_failures
+    lines.append(
+        f"- Paydadan düşenler: {excluded} "
+        f"(cevaplanamaz {unanswerable}, altyapı hatası {scores.infra_errors}, "
+        f"bozuk referans {scores.reference_failures})"
+    )
+    if suite.retries_used:
+        lines.append(f"- Sağlayıcı yeniden denemesi: {suite.retries_used}")
+
+    if scores.infra_error_ratio > INFRA_ERROR_WARNING_RATIO:
+        lines += [
+            "",
+            f"> **Bu koşu karşılaştırılabilir değil.** Soruların "
+            f"%{scores.infra_error_ratio * 100:.0f}'ü altyapı hatası aldı "
+            f"(eşik %{INFRA_ERROR_WARNING_RATIO * 100:.0f}). Sağlayıcı doygun; "
+            "daha az çekişen bir modelle tekrar koş (`make llm-models`).",
+        ]
+
+    dropped = [
+        name
+        for name, supported in (
+            ("temperature", suite.temperature_supported),
+            ("reasoning_effort", suite.reasoning_effort_supported),
+        )
+        if not supported
+    ]
+    if dropped:
+        lines += [
+            "",
+            f"> Sağlayıcı şu parametreleri reddetti: {', '.join(dropped)}. "
+            "Koşular bu yüzden tam deterministik değil; başka bir koşuyla "
+            "karşılaştırırken bunu hesaba kat.",
+        ]
+
+    lines += [
+        "",
+        "### Kategoriler",
+        "",
+        "| Kategori | n | doğru | çalıştı | zorunlu kolon | yasak yapı |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for name, cat in by_category(suite).items():
+        lines.append(
+            f"| {name} | {cat.total} | {_pct(cat.accuracy)} | "
+            f"{cat.executes}/{cat.total} | {cat.required_columns}/{cat.total} | "
+            f"{cat.no_forbidden}/{cat.total} |"
+        )
+
+    first_try = sum(1 for r in suite.results if r.repairs_used == 0 and r.executes)
+    repaired = sum(1 for r in suite.results if r.repairs_used > 0 and r.executes)
+    still_refused = sum(1 for r in suite.results if not r.executes and not r.infra_error)
+    lines += [
+        "",
+        "### Onarım döngüsü",
+        "",
+        f"- İlk denemede geçen: {first_try}",
+        f"- Onarımla düzelen: {repaired}",
+        f"- Onarımdan sonra da reddedilen: {still_refused}",
+    ]
+
+    broken = [r for r in suite.results if r.reference_failed]
+    if broken:
+        lines += [
+            "",
+            "### Bozuk referans sorguları (gold set hatası, modelin değil)",
+            "",
+        ]
+        lines += [f"- `{r.id}` — {r.reason}" for r in broken]
+
+    failures = [r for r in suite.results if not r.green and not r.reference_failed]
+    if failures:
+        lines += ["", "### Soru soru inceleme", ""]
+        for result in failures:
+            lines += [
+                f"#### `{result.id}` ({result.category})",
+                "",
+                f"Soru: {result.question}",
+                "",
+                f"Neden: {result.reason or '(sebep kaydedilmedi)'}",
+                "",
+                "```sql",
+                (result.generated_sql or "(SQL üretilmedi)"),
+                "```",
+            ]
+            if result.reference_rows or result.candidate_rows:
+                lines += [
+                    "",
+                    "Beklenen (referans):",
+                    _fmt_rows(result.reference_rows),
+                    "",
+                    "Gelen (model):",
+                    _fmt_rows(result.candidate_rows),
+                ]
+            lines.append("")
+
+    return lines
+
+
+def to_markdown(suites: Sequence[SuiteResult], *, threshold: float) -> str:
+    lines = [
+        "# Text-to-SQL değerlendirmesi",
+        "",
+        f"Üretildi: {dt.datetime.now(dt.UTC).strftime('%Y-%m-%d %H:%M UTC')}",
+        "",
+        "Hakem sonuç kümesi eşitliğidir: model referanstan farklı SQL yazdıysa ve "
+        "satırlar aynıysa cevap doğrudur. Yüzdelik ve grup büyüklüğü gibi zorunlu "
+        "kolonlar ile yasak yapılar ayrı boyutlarda puanlanır.",
+        "",
+    ]
+    for suite in suites:
+        lines += _suite_section(suite, threshold)
+
+    if len(suites) >= 2:
+        found = disagreements(suites[0], suites[1])
+        lines += [
+            "",
+            "## Modeller arası uyuşmazlık",
+            "",
+            "Gün 5'in bulgusu: iki modelin ayrıldığı yer prompt'un belirsiz olduğu yerdir.",
+            "",
+        ]
+        if not found:
+            lines.append("_Uyuşmazlık yok._")
+        else:
+            lines += [
+                f"| Soru | Kategori | {suites[0].model} | {suites[1].model} |",
+                "| --- | --- | --- | --- |",
+            ]
+            for item in found:
+                left = item.verdicts[suites[0].model]
+                right = item.verdicts[suites[1].model]
+                lines.append(
+                    f"| `{item.id}` | {item.category} | {_verdict(left)} | {_verdict(right)} |"
+                )
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _verdict(value: bool | None) -> str:
+    if value is None:
+        return "puanlanmadı"
+    return "doğru" if value else "yanlış"
