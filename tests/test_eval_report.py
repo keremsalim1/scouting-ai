@@ -303,6 +303,19 @@ def test_disagreements_ignores_questions_missing_from_one_suite():
     assert [x.id for x in report.disagreements(full, partial)] == ["rates-02"]
 
 
+def test_disagreement_carries_each_models_sql_under_an_honest_name():
+    """The field holds SQL, so it must not be called `relations`: a consumer
+    reading that name would expect relation names and get a query."""
+    strong = _suite(_result("rates-01", category="rates", correct=True))
+    weak = _suite(
+        _result("rates-01", category="rates", correct=False),
+        model="gemini/gemini-3.1-flash-lite",
+    )
+    found = report.disagreements(strong, weak)[0]
+    assert found.generated_sql["gemini/gemini-3.8-flash"] == "select 1 limit 200"
+    assert not hasattr(found, "relations")
+
+
 def test_disagreements_is_empty_when_both_models_agree():
     a = _suite(_result("rates-01", category="rates", correct=True))
     b = _suite(_result("rates-01", category="rates", correct=True), model="other/model")

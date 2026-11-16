@@ -63,7 +63,10 @@ class Disagreement:
     category: str
     question: str
     verdicts: dict[str, bool | None]
-    relations: dict[str, str | None]
+    # The SQL each model wrote, keyed by model name. Named for what it holds:
+    # an earlier version called this `relations`, which would have handed a
+    # consumer a query where it expected relation names.
+    generated_sql: dict[str, str | None]
 
 
 def score(results: Sequence[QuestionResult]) -> Scores:
@@ -110,7 +113,7 @@ def disagreements(a: SuiteResult, b: SuiteResult) -> tuple[Disagreement, ...]:
                 category=left.category,
                 question=left.question,
                 verdicts={a.model: left.correct, b.model: right.correct},
-                relations={a.model: left.generated_sql, b.model: right.generated_sql},
+                generated_sql={a.model: left.generated_sql, b.model: right.generated_sql},
             )
         )
     return tuple(found)
