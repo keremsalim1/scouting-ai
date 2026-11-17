@@ -121,13 +121,14 @@ Gerekçeler D-022…D-025.
 - **Zayıf model prompt geliştirmenin aletidir.** Güçlü model açığı muhakemeyle kapatır ve prompt'un eksik olduğunu söylemez. İki modeli aynı soruya koş: **uyuşmadıkları yer prompt'un belirsiz olduğu yerdir.**
 
 ## Text-to-SQL değerlendirmesi (Gün 6)
-Gerekçeler D-026…D-028. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kategori).
-- **Hakem sonuç kümesidir, SQL metni değil.** Kolonlar sıraya göre karşılaştırılır, isme göre değil; modelin fazladan kolon döndürmesi hata değil (referansın kolonları **önek** olarak bulunmalı), eksik olması hatadır. Yapı farkı raporlanır, puana etki etmez.
+Gerekçeler D-026…D-029. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kategori).
+- **Hakem sonuç kümesidir, SQL metni değil.** Kolonlar isme göre değil, **sıraya göre ama konuma bağlı olmadan** eşleştirilir: referansın kolonları adayın içinde sırayı koruyan bir **alt dizi** olarak bulunur. Model `player_id`'yi başa eklediğinde cevap yanlış sayılmaz (D-029). Eşleme ilk satır çiftinden bir kez türetilip tüm satırlara uygulanır — satır satır kolon seçmek kazara eşleşme üretir.
+- **Referans tam olarak cevabı içerir:** satırın kimliği + sorulan ölçü. Prompt'un istediği bağlam (`minutes_played`, `matches`, kulüp) `required_columns`'ın işi. İkisini karıştırmak "doğru cevap" ile "doğru çıktı biçimi"ni tek sayıya çökertir ve %66,7 ile %80,6 arasındaki farkı yaratır.
 - **Dört boyut ayrı puanlanır:** `executes`, `correct` (eşik buna), `required_columns`, `no_forbidden`. Dördüncüsü "doğru sayı, yanlış sebep"i yakalar.
 - **Üç şey paydadan düşer ve `correct = None` olur:** `unanswerable` kategorisi, `infra_error`, `reference_failed`. Rapor üçünü **ayrı ayrı sayar** — her birinin çözümü farklı.
 - **`infra_error` boş `SqlResult.attempts`'ten anlaşılır**, hata metninden değil: gelen her cevap bir `Attempt` ekler, guard'ın reddettiği cevap bile. Attempt yoksa cevap hiç gelmedi.
 - **Bozuk referans asla modele yazılmaz.** Migration bir kolonu yeniden adlandırdığında gold set çürür; bu "model yanlış" diye raporlanırsa olmayan bir prompt hatası aranır.
-- **Gold set kendi kendisini doğrular** (`make eval-sql-gold`): guard, `EXPLAIN`, few-shot çakışması, kategori sayıları, referans kendi `required_columns`'unu sağlıyor mu, kendi `forbidden`'ını ihlal ediyor mu. Bu altı kontrol **ilk koşuda kendi gold set'imde 5 hata buldu.**
+- **Gold set kendi kendisini doğrular** (`make eval-sql-gold`): guard, `EXPLAIN`, few-shot çakışması, kategori sayıları, zorunlu kolonlar gerçek kolon mu (katalogdan), referans kendi `forbidden`'ını ihlal ediyor mu, eşitlik sınırı. **İlk koşuda kendi gold set'imde 5 hata buldu.** Ayrıca kapsam basar: ilişki 8/12, metrik 5/38 — raporlanır, zorlanmaz.
 - **Eşitlik sınırı tuzağı:** sıralama sorusunda `limit` eşitliğe denk gelirse iki farklı cevap da doğrudur ve karşılaştırıcı ayırt edemez. Kontrol **tüm `ORDER BY` anahtarına** bakar — `order by total_goals desc, date` tek kolona bakıldığında olmayan eşitlik bildirir.
 - **`desc` sıralamada Postgres NULL'ları BAŞA koyar.** "En yüksek" sorusunda `is not null` filtresi şart; yoksa ilk satırlar değersiz gelir. Payda 0 olan oranlarda (ör. `npxg_per_shot`) bu sık.
 - **CI'da LLM yok, ETL yok.** pgvector servisi + yalnız migration + `EXPLAIN`. Veri olmadan şema doğrulaması tamdır; sağlayıcı 503'ü PR'ı kırmızı yapmaz.
@@ -143,4 +144,4 @@ Gerekçeler D-026…D-028. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kate
 - [x] Gün 3: position_map + season/per-90 view'ları — per-90 OpenPlay ile farkı 0
 - [x] Gün 4: `config/metrics.yaml` (38 metrik) + yüzdelikler — 10 elle kontrol doğru, 182 test yeşil
 - [x] Gün 5: güvenli text-to-SQL — 36 saldırgan vakada zararlı sorgu 0, uçtan uca çalışıyor
-- [~] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI **kuruldu ve çalışıyor** (330 birim + 4 db testi yeşil, gold set 36/36). **Eşik doğrulanmadı:** zayıf modelde %52,8 (19/36), güçlü model sağlayıcı kotası/doygunluğu yüzünden koşturulamadı. Gün 7'den önce güçlü model koşusu borçlu.
+- [x] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI — **%80,6 (29/36), eşik %70 geçildi**; `gemini-3.6-flash`, 121 sn, 0 altyapı hatası, ölçülen maliyet $0,23. 380 birim + 124 db testi yeşil, gold set 36/36. Onarım döngüsü ölçümü: 0 (hiç işe yaramadı).

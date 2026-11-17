@@ -13,12 +13,15 @@ Kaynak: onaylanmış plan dokümanı. Her günün kabul kriteri karşılanmadan 
 | 5 | Text-to-SQL, structured output, SQL güvenliği | metrics.yaml'dan şema açıklaması, few-shot, sqlglot doğrulayıcı, salt-okunur rol, timeout, 1 düzeltme denemesi | 20 saldırgan prompt'ta zararlı sorgu çalışmaz |
 | 6 | Text-to-SQL değerlendirmesi | 40 soruluk benchmark; `make eval-sql`; GitHub Actions; README | Execution accuracy ≥ %70; CI yeşil; hata analizi README'de |
 
-### Gün 6 durumu (2026-11-16)
-Benchmark, `make eval-sql` / `eval-sql-both` / `eval-sql-gold` ve GitHub Actions kuruldu;
-hata analizi README'de. **Kabul kriterinin doğruluk kısmı açık:** eşik güçlü modele uygulanır
-(D-028) ve o gün dört aday modelin hepsi erişilemezdi (503 ya da günlük kota). Zayıf modelde
-ölçülen %52,8 (19/36) teşhis amaçlıdır, eşik değil. CI yerelde doğrulandı ama GitHub'da
-henüz koşmadı — push bekliyor.
+### Gün 6 durumu (2026-11-17) — tamamlandı
+Benchmark, `make eval-sql` / `eval-sql-both` / `eval-sql-gold` / `eval-sql-smoke` /
+`eval-sql-merge` ve GitHub Actions kuruldu; hata analizi README'de.
+**Kabul kriteri karşılandı: %80,6 (29/36), eşik %70** — `gemini-3.6-flash`, 121 sn,
+0 altyapı hatası, ölçülen maliyet $0,23.
+
+İlk koşu %66,7 verdi ve eşiği kaçırdı; 12 hatadan yalnız 3'ü yanlış SQL'di, gerisi
+hakemin konumsal kolon karşılaştırmasıydı (D-029). Hakem düzeltilince aynı model
+%80,6 aldı. CI yerelde doğrulandı; GitHub'da henüz koşmadı.
 
 ## Hafta 2 — Profiller, benzerlik, bilgi tabanı, API/UI → `v0.2`
 

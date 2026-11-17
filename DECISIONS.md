@@ -821,18 +821,52 @@ WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY assists DESC LIMIT 5
 
 **Gerekçe.** D-025'te kurulan ayrım: zayıf model prompt'un belirsiz olduğu yeri gösteren alet, ürünün kalite çıtası değil. Zayıf modeli eşiğe tabi tutmak iki şeyi birbirine karıştırır ve prompt'u zayıf modele göre aşırı uydurmaya (overfit) iter. Tersi — eşiği zayıf modelden kaldırmak — teşhisi kaybeder.
 
-**Sonuç/ölçüm (2026-11-16).** **Kriter karşılanmadı ve usulünce ölçülemedi.**
+**Sonuç/ölçüm.** **Kriter karşılandı: %80,6 (29/36), eşik %70.**
 
-Ölçülen: `gemini/gemini-3.1-flash-lite`, 40 soru, 279 sn, **0 altyapı hatası**, doğruluk **%52,8 (19/36)**. Payda 36: 4 `unanswerable` sorusunun referans sonuç kümesi yok.
+`gemini/gemini-3.6-flash`, 40 soru, 121 sn, **0 altyapı hatası**, ölçülen maliyet **$0,23** (283.304 girdi + 4.975 çıktı token, sağlayıcının kendi sayımı). Payda 36: 4 `unanswerable` sorusunun referans sonuç kümesi yok.
 
-Ölçülemeyen: güçlü model. O gün dört adayın hepsi erişilemezdi — `gemini-3.8-flash` ve `3.7-flash` 503 (doygunluk), `3.6-flash` ve `3.5-flash` ~15 soru sonra ücretsiz katman günlük kotasını tüketti (RateLimitError). İlk `3.6-flash` denemesi 40 sorudan yalnız 9'unu puanlanabilir bıraktı; altyapı hatası oranı %10 uyarı eşiğinin çok üstünde olduğu için rapor o koşuyu "karşılaştırılabilir değil" diye işaretledi — tasarımın tam olarak öngördüğü davranış.
+**Kategori kırılımı:** `totals` %100, `filters` %100, `rates` %83, `percentiles` %80, `transfers` %80, `teams` %80, `match_detail` %40.
 
-**Kategori kırılımı (zayıf model):** `teams` %100, `filters` %100, `percentiles` %80, `totals` %40, `transfers` %40, `rates` %17, `match_detail` %0.
+Teşhisin değeri iki kolonun ayrılmasında: `rates` doğruluk %83 ama **zorunlu kolon 2/6** — model doğru per-90 değerini hesaplıyor ve dayandığı `minutes_played`'i döndürmüyor. Örneklemi olmayan bir oran, scouting raporunun basmasına izin verilmeyen bir sayıdır. Bu gerçek bir açık, ama doğruluk açığı değil; tek skorda birleştirmek onu gizliyordu.
 
-Teşhisin değeri burada: geliştiricinin önceden "bunlara takılır" dediği iki kategori (oranlar, takım değiştirenler) gerçekten en zorlar arasında, ama **`match_detail` %0'ı kimse öngörmedi** — ve şema prompt'unun en az şey söylediği kategori o.
+`match_detail` %40 ile en zayıf kategori ve kimse öngörmedi — şema prompt'unun en az şey söylediği kategori o.
 
-**Yan ölçüm — onarım döngüsü.** `generate.py` guard reddinde bir kez daha deniyor ve docstring'i "Gün 6 bunun işe yarayıp yaramadığını ölçer" diyordu. Ölçüldü: 38 soru ilk denemede geçti, **0 soru onarımla düzeldi**, 2 soru onarımdan sonra da reddedildi. Yani onarım denemesi 40 soruda bir kez bile reddi çalışan bir sorguya çevirmedi. Güçlü modelde tekrar ölçülmeden kaldırılmamalı.
+**Kalan 7 hatanın dağılımı:** 4'ü yanlış SQL (`rates-03` yanlış kolon, `percentiles-04` ters metrik tuzağı, `match_detail-03/-04`), 1'i yanlış ilişki (`transfers-02` kulüp bazlı soruyu birleşik view'dan cevapladı; `forbidden` boyutu yakaladı), 1'i yuvarlama tercihi (`teams-02` → `round(sum(xg), 2)`), 1'i farklı sonuç kümesi.
 
-**Yan ölçüm — D-025 kalıcı mı?** Evet. 40 sorunun hiçbirinde yasak yapı ihlali yok (`no_forbidden` her kategoride tam). Dakika kuralının toplam/oran ayrımı, kuralı ilk kez açığa çıkaran modelde bile tutuyor.
+**Yan ölçüm — onarım döngüsü: 0.** 40 soru ilk denemede guard'dan geçti, onarım yolu hiç çalışmadı. İki modelde, iki koşuda aynı sonuç. `generate.py`'nin docstring'indeki tahmin doğruydu.
 
-**Tarih.** 2026-11-16
+**Yan ölçüm — D-025 kalıcı mı?** 40 sorudan 39'unda yasak yapı ihlali yok. Tek ihlal `transfers-02` ve o zaten yanlış cevap.
+
+**Zayıf model artık zayıf değil.** `gemini-3.1-flash-lite` de 29/36 aldı, yalnız 4 uyuşmazlık kaldı. D-025'in dayandığı diferansiyel sinyal bu gold set'te inceldi; gerçekten daha zayıf bir model ya da daha zor sorular gerekiyor. Bu, D-028'in kararını geçersiz kılmıyor (eşik yine güçlü modele uygulanır) ama zayıf modelin teşhis değerini bu gold set için azaltıyor.
+
+**Tarih.** 2026-11-17
+
+---
+
+## D-029: Hakem cevabı yargılar, çıktı biçimini değil
+
+**Bağlam.** İlk gerçek koşu %66,7 verdi ve eşiği kaçırdı. 12 hatayı tek tek okuyunca **yalnız 3'ünün yanlış SQL olduğu** çıktı. Dördü şuydu:
+
+```sql
+-- referans:  select player, count(distinct comp) ...
+-- model:     SELECT player_id, player, COUNT(DISTINCT comp) AS n_comps, ...
+```
+
+Bilgi eksiksiz, üstüne fazlası var — ama konumsal önek karşılaştırması 1. kolonda `104058` görüp `'Ademola Lookman'` bekliyordu. Zayıf model aynı soruyu daha az kolonla yazıp doğru aldı: **benchmark daha bilgilendirici cevabı cezalandırıyordu.** Beş hata daha atlanan bağlam kolonuydu (`minutes_played`, `clubs`) — o bir çıktı sözleşmesi ihlali ve yeri `required_columns`.
+
+**Karar.** İki değişiklik, ve hiçbiri tek başına çalışmıyor:
+
+1. **Referans tam olarak cevabı içerir:** satırın kimliği + sorulan ölçü. Prompt'un istediği bağlam (`minutes_played`, `matches`, kulüp) `required_columns`'a taşındı. 24 referans düzenlendi.
+2. **Karşılaştırıcı referansın kolonlarını adayın içinde arar** — sırayı koruyarak, ama 0. konumdan başlamak zorunda olmadan. Eşleme **ilk satır çiftinden bir kez** türetilip tüm satırlara uygulanır; satır satır kolon seçmek, adayın her satırda başka bir kolonu seçerek eşleşmesine izin verirdi (test bunu sabitliyor).
+
+Neden birlikte: referansı tek başına küçültmek durumu kötüleştirir. Referans `(player, goals)` olup model `(player, teams, goals)` döndürdüğünde önek `(player, teams)` olur ve yine yanlış çıkar.
+
+**Gold set'in self-check'i de değişti.** Referans artık kendi `required_columns`'unu içermek zorunda değil — tasarım gereği içermiyor. Yerine katalog kontrolü geldi: her zorunlu kolon, referansın okuduğu ilişkilerden birinin **gerçek bir kolonu** olmak zorunda. Bu, `teams` yerine `team` yazmak gibi bir yazım hatasını yakalar; o hata düzeltilmezse her modeli sonsuza kadar başarısız yapar.
+
+**Alternatifler.** (a) Kuralı olduğu gibi bırakıp %66,7'yi kaydetmek: benchmark "doğru cevap" ile "doğru çıktı biçimi"ni tek sayıda karıştırmaya devam ederdi. (b) Yalnız alt-dizi eşleşmesi (referansları küçültmeden): baştaki kimlik kolonu sorununu çözerdi (4 soru) ama atlanan bağlam kolonlarını `correct`'te cezalandırmaya devam ederdi.
+
+**Sonuç/ölçüm.** Doğruluk **%66,7 → %80,6**, model değişmeden. O fark ölçüm hatasıydı. Açıkça söylemek gerekir: ilk sayı model hakkında yanlış, benchmark hakkında doğruydu.
+
+**Bilinen sınırlama.** Tolerans (bağıl 1e-6) sunum tercihini reddediyor: `teams-02` xG'yi iki ondalığa yuvarlayıp yanlış sayılıyor. Toleransı genel olarak gevşetmek gerçek hataları gizlerdi (per-90'da 5,77 ile 5,8 farkı önemlidir), o yüzden tolerans duruyor ve bu soru bilinen bir yanlış-negatif olarak kayıtlı.
+
+**Tarih.** 2026-11-17
