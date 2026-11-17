@@ -317,3 +317,23 @@ def test_smoke_runs_one_question_per_category(tmp_path, monkeypatch):
 def test_smoke_and_category_cannot_be_combined(tmp_path, capsys):
     assert eval_sql.main(["--smoke", "--category", "rates", "--out", str(tmp_path)]) == 2
     assert "smoke" in capsys.readouterr().out
+
+
+def test_retries_default_to_one_for_benchmark_runs(tmp_path, monkeypatch):
+    """Batch 1 lost its whole daily allowance to retries: three retries at a
+    120s timeout meant one unanswered question could cost three requests.
+    A benchmark wants throughput, and an unanswered question leaves the
+    denominator anyway."""
+    built: list[dict] = []
+    monkeypatch.setattr(eval_sql, "LiteLLMClient", lambda **kw: built.append(kw) or object())
+    _stub_run(monkeypatch, lambda model: _suite(True, model=model))
+    eval_sql.main(["--out", str(tmp_path)])
+    assert built[0]["max_retries"] == 1
+
+
+def test_retries_can_be_raised_explicitly(tmp_path, monkeypatch):
+    built: list[dict] = []
+    monkeypatch.setattr(eval_sql, "LiteLLMClient", lambda **kw: built.append(kw) or object())
+    _stub_run(monkeypatch, lambda model: _suite(True, model=model))
+    eval_sql.main(["--retries", "3", "--out", str(tmp_path)])
+    assert built[0]["max_retries"] == 3

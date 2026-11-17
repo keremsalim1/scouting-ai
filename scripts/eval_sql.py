@@ -169,6 +169,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="report directory")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--max-rows", type=int, default=guard.DEFAULT_LIMIT)
+    # Benchmark runs default to ONE retry, not the three ask.py uses. Day 6
+    # batch 1 lost its whole 20-request daily allowance this way: five
+    # questions that never answered cost three requests each at a 120s
+    # timeout. An unanswered question leaves the denominator regardless, so
+    # spending the allowance trying to rescue it buys nothing.
+    parser.add_argument("--retries", type=int, default=1, help="provider retries per call")
     parser.add_argument(
         "--budget",
         type=int,
@@ -206,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for model in models:
             print(f"\n{model}")
-            client = LiteLLMClient(model=model)
+            client = LiteLLMClient(model=model, max_retries=args.retries)
             suites.append(
                 run_suite(
                     questions,
