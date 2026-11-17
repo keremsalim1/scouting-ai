@@ -123,3 +123,29 @@ def test_violated_forbidden_rejects_an_unknown_check():
     """A typo in questions.yaml must fail loudly, not pass silently."""
     with pytest.raises(ValueError, match="hand_of_god"):
         structure.violated_forbidden("select 1 from t limit 1", ("hand_of_god",))
+
+
+def test_order_columns_locates_the_ranking_keys():
+    sql = "select date, home_team, total_goals from t order by total_goals desc, date limit 5"
+    assert structure.order_columns(sql) == (2, 0)
+
+
+def test_order_columns_is_empty_without_an_order_by():
+    assert structure.order_columns("select a from t limit 1") == ()
+
+
+def test_order_columns_raises_when_a_key_is_not_projected():
+    with pytest.raises(ValueError, match="date"):
+        structure.order_columns("select a from t order by date limit 1")
+
+
+def test_order_columns_of_an_unparsable_query_is_empty():
+    assert structure.order_columns("not sql ((") == ()
+
+
+def test_ranking_keys_only_covers_the_leading_key():
+    """The comparator needs the columns a ranking is tied on, which is the
+    leading ORDER BY key: a trailing `, date` is the author's tiebreak and is
+    exactly what must NOT decide a verdict."""
+    sql = "select date, home_team, total_goals from t order by total_goals desc, date limit 5"
+    assert structure.ranking_keys(sql) == (2,)

@@ -128,6 +128,52 @@ def has_minutes_filter(sql: str) -> bool:
     return False
 
 
+def order_columns(sql: str) -> tuple[int, ...]:
+    """Where each ORDER BY expression sits in the SELECT list.
+
+    All of them: `order by total_goals desc, date` is deterministic even when
+    two rows share `total_goals`, and the gold-set tie check needs the whole
+    key to avoid reporting a tie that does not exist.
+
+    Raises when an ordering column is not projected, which makes "the ORDER BY
+    columns must be in the SELECT list" an enforced gold-set rule rather than
+    a convention.
+    """
+    tree = _parse(sql)
+    if tree is None:
+        return ()
+    order = tree.args.get("order")
+    if order is None:
+        return ()
+
+    columns = [c.lower() for c in output_columns(sql)]
+    indexes: list[int] = []
+    for ordered in order.expressions:
+        target = ordered.this
+        name = (
+            target.alias_or_name
+            if isinstance(target, (exp.Column, exp.Alias))
+            else target.sql(dialect=guard.DIALECT)
+        )
+        if name.lower() not in columns:
+            msg = f"ORDER BY {name!r} is not in the SELECT list ({', '.join(columns)})"
+            raise ValueError(msg)
+        indexes.append(columns.index(name.lower()))
+    return tuple(indexes)
+
+
+def ranking_keys(sql: str) -> tuple[int, ...]:
+    """The column a ranking is genuinely ordered by: the LEADING ORDER BY key.
+
+    Deliberately only the first. A trailing `, date, home_team` is the gold
+    set author's tiebreak - it keeps the reference deterministic, but it is
+    not what the question asked for, so it must not decide a verdict. Rows
+    tied on the leading key are interchangeable.
+    """
+    found = order_columns(sql)
+    return found[:1]
+
+
 def missing_required(sql: str, required: tuple[str, ...]) -> tuple[str, ...]:
     """Which required output columns the query does not project.
 

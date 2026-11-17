@@ -226,10 +226,19 @@ def run_question(
             structure_differs = structure.relations_used(generated) != structure.relations_used(
                 question.reference_sql or ""
             )
+            # Rows tied on the ranking key are interchangeable: the
+            # reference's trailing `, date, home_team` keeps it deterministic
+            # but is not part of what the question asked for.
+            tie_columns = (
+                structure.ranking_keys(question.reference_sql or "")
+                if question.order_sensitive
+                else ()
+            )
             outcome = compare.compare(
                 reference.rows,
                 candidate.rows,
                 order_sensitive=question.order_sensitive,
+                tie_columns=tie_columns,
             )
             verdict.correct = outcome.equal
             if not outcome.equal:

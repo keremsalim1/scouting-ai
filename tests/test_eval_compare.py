@@ -189,3 +189,51 @@ def test_order_insensitive_matching_still_locates_columns():
     ref = [("a", 1), ("b", 2)]
     cand = [(99, "b", 2), (98, "a", 1)]
     assert compare.compare(ref, cand, order_sensitive=False).equal
+
+
+# ---------------------------------------------------------------------------
+# A ranking is correct when the blocks are right; order inside a tie is not
+# part of the answer
+# ---------------------------------------------------------------------------
+
+
+def test_rows_tied_on_the_ranking_key_may_be_in_any_order():
+    """'The 5 highest-scoring matches' ranks by goals. Three matches share 7
+    goals, and which of those three comes first is the gold set author's
+    `order by ..., date` habit, not something the question asks for."""
+    ref = [("Fulham", 9), ("Man Utd", 8), ("Brighton", 7), ("Newcastle", 7), ("Burnley", 7)]
+    cand = [("Fulham", 9), ("Man Utd", 8), ("Newcastle", 7), ("Brighton", 7), ("Burnley", 7)]
+    assert compare.compare(ref, cand, order_sensitive=True, tie_columns=(1,)).equal
+
+
+def test_a_wrong_ranking_is_still_wrong_with_tie_columns():
+    ref = [("a", 9), ("b", 8), ("c", 7)]
+    cand = [("b", 8), ("a", 9), ("c", 7)]
+    assert not compare.compare(ref, cand, order_sensitive=True, tie_columns=(1,)).equal
+
+
+def test_a_wrong_member_of_a_tie_group_is_still_wrong():
+    ref = [("a", 9), ("b", 7), ("c", 7)]
+    cand = [("a", 9), ("c", 7), ("d", 7)]
+    assert not compare.compare(ref, cand, order_sensitive=True, tie_columns=(1,)).equal
+
+
+def test_without_tie_columns_the_order_is_exact():
+    ref = [("a", 7), ("b", 7)]
+    cand = [("b", 7), ("a", 7)]
+    assert not compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_tie_columns_are_ignored_when_the_question_is_a_set():
+    ref = [("a", 7), ("b", 7)]
+    cand = [("b", 7), ("a", 7)]
+    assert compare.compare(ref, cand, order_sensitive=False, tie_columns=(1,)).equal
+
+
+def test_several_tie_columns_define_the_block_together():
+    ref = [("a", 7, "x"), ("b", 7, "x"), ("c", 7, "y")]
+    cand = [("b", 7, "x"), ("a", 7, "x"), ("c", 7, "y")]
+    assert compare.compare(ref, cand, order_sensitive=True, tie_columns=(1, 2)).equal
+    # moving a row across a block boundary is a ranking error, not a tie
+    moved = [("c", 7, "y"), ("a", 7, "x"), ("b", 7, "x")]
+    assert not compare.compare(ref, moved, order_sensitive=True, tie_columns=(1, 2)).equal
