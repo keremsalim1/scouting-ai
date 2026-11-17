@@ -132,3 +132,60 @@ def test_reason_names_the_differing_column():
 
 def test_equal_comparison_carries_no_reason():
     assert compare.compare([("a", 1)], [("a", 1)], order_sensitive=True).reason == ""
+
+
+# ---------------------------------------------------------------------------
+# Reference columns located within the candidate, not anchored at position 0
+# ---------------------------------------------------------------------------
+
+
+def test_a_leading_identifier_column_does_not_break_the_match():
+    """The strong model answered `select player_id, player, count(...)` where
+    the reference asks for `player, count(...)`. The information is complete
+    and the extra column is leading, not trailing."""
+    ref = [("Ademola Lookman", 2)]
+    cand = [(104058, "Ademola Lookman", 2, "eng, ita")]
+    assert compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_interleaved_extra_columns_are_allowed():
+    ref = [("Saka", 11)]
+    cand = [("Saka", "Arsenal", 11, 2400, 35)]
+    assert compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_the_reference_order_must_be_preserved():
+    ref = [("Saka", 11)]
+    cand = [(11, "Saka")]
+    assert not compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_one_column_mapping_is_used_for_every_row():
+    """Picking columns per row would let a candidate match by cherry-picking a
+    different column in each row."""
+    ref = [("a", 1), ("b", 2)]
+    cand = [("a", 1, 99), ("b", 99, 2)]
+    assert not compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_a_missing_value_is_still_not_equal():
+    ref = [("Saka", 11)]
+    cand = [("Saka", "Arsenal", 2400)]
+    assert not compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_a_wrong_value_is_still_not_equal():
+    ref = [("Saka", 11)]
+    cand = [("Saka", "Arsenal", 9, 2400)]
+    assert not compare.compare(ref, cand, order_sensitive=True).equal
+
+
+def test_the_reason_says_which_reference_column_was_not_found():
+    out = compare.compare([("Saka", 11)], [("Saka", "Arsenal")], order_sensitive=True)
+    assert "column 2" in out.reason
+
+
+def test_order_insensitive_matching_still_locates_columns():
+    ref = [("a", 1), ("b", 2)]
+    cand = [(99, "b", 2), (98, "a", 1)]
+    assert compare.compare(ref, cand, order_sensitive=False).equal

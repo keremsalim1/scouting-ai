@@ -27,6 +27,7 @@ import sqlglot
 from sqlglot import exp
 
 from football_ai.console import force_utf8
+from football_ai.data import db
 from football_ai.data.db import connect, readonly_dsn
 from football_ai.evals.sql import coverage, execute, goldset, structure
 from football_ai.sql_agent import generate, guard
@@ -128,22 +129,48 @@ def check_category_counts(gold: goldset.GoldSet) -> list[str]:
     return offenders
 
 
-def check_self_consistency(gold: goldset.GoldSet) -> list[str]:
-    """The reference must meet the standard it holds the model to.
+def check_required_columns_exist(gold: goldset.GoldSet, conn: psycopg.Connection) -> list[str]:
+    """Every `required_columns` name must be a real column of a relation the
+    reference reads.
 
-    A question requiring `comparison_group_size` whose own reference omits it
-    would fail the model for something the gold set does not do either, and
-    the report would read as a model defect.
+    The reference deliberately does NOT contain these columns: it holds the
+    answer, while `required_columns` holds the output convention the prompt
+    asks the model to follow. So "does the reference satisfy them" is the
+    wrong question - but "is this a real column name" still catches the typo
+    (`teams` vs `team`) that would fail every model forever.
     """
+    with conn.cursor() as cur:
+        cur.execute(
+            "select table_name, column_name from information_schema.columns "
+            "where table_schema = %s",
+            (db.SCHEMA,),
+        )
+        catalog: dict[str, set[str]] = {}
+        for relation, column in cur.fetchall():
+            catalog.setdefault(relation.lower(), set()).add(column.lower())
+
+    offenders = []
+    for q in gold.questions:
+        if not q.reference_sql or not q.required_columns:
+            continue
+        available: set[str] = set()
+        for relation in structure.relations_used(q.reference_sql):
+            available |= catalog.get(relation, set())
+        unknown = [c for c in q.required_columns if c.lower() not in available]
+        if unknown:
+            offenders.append(
+                f"{q.id}: required_columns names no such column on the relations the "
+                f"reference reads: {', '.join(unknown)}"
+            )
+    return offenders
+
+
+def check_self_consistency(gold: goldset.GoldSet) -> list[str]:
+    """The reference must not violate the rules it holds the model to."""
     offenders = []
     for q in gold.questions:
         if not q.reference_sql:
             continue
-        missing = structure.missing_required(q.reference_sql, q.required_columns)
-        if missing:
-            offenders.append(
-                f"{q.id}: the reference omits its own required column(s): {', '.join(missing)}"
-            )
         violated = structure.violated_forbidden(q.reference_sql, q.forbidden)
         if violated:
             offenders.append(
@@ -219,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     conn = connect(readonly_dsn())
     try:
         failures += check_explain(gold, conn)
+        failures += check_required_columns_exist(gold, conn)
         if args.execute:
             failures += check_returns_rows(gold, conn)
             failures += check_no_tie_at_the_cut(gold, conn)

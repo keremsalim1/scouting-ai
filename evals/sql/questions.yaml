@@ -29,7 +29,7 @@
   forbidden: [minutes_filter]
   notes: "Toplam sorusu: dakika filtresi olmamalı."
   reference_sql: |
-    select player, teams, goals, minutes_played, matches
+    select player, goals
     from football.player_season
     where comp = 'ita'
     order by goals desc
@@ -45,7 +45,7 @@
     Toplam sorusu. Disiplin metrikleri de toplamdır. Limit 7 seçildi: 11
     kartlılar 7. sırada bitiyor, 6 olsa eşitlik sınırına düşerdi.
   reference_sql: |
-    select player, teams, yellow_cards, minutes_played, matches
+    select player, yellow_cards
     from football.player_season
     where comp = 'esp'
     order by yellow_cards desc
@@ -59,7 +59,7 @@
   forbidden: [minutes_filter]
   notes: "\"Sezon boyunca\" toplam demek; per-90 ile karıştırılması tipik hata."
   reference_sql: |
-    select player, teams, key_passes, minutes_played, matches
+    select player, key_passes
     from football.player_season
     where comp = 'eng'
     order by key_passes desc
@@ -73,7 +73,7 @@
   forbidden: [minutes_filter]
   notes: "ball_recoveries kolonu. Toplam sorusu."
   reference_sql: |
-    select player, teams, ball_recoveries, minutes_played, matches
+    select player, ball_recoveries
     from football.player_season
     where comp = 'ita'
     order by ball_recoveries desc
@@ -87,7 +87,7 @@
   forbidden: [minutes_filter]
   notes: "Dakikanın kendisi sorulduğunda dakika filtresi eklemek döngüsel olur."
   reference_sql: |
-    select player, teams, minutes_played, matches
+    select player, minutes_played
     from football.player_season
     where comp = 'eng'
     order by minutes_played desc
@@ -105,7 +105,7 @@
   required_columns: [player, teams, minutes_played]
   notes: "Oran sorusu: 900 dakika eşiği olmadan az oynayan biri listeyi domine eder."
   reference_sql: |
-    select player, teams, shots_per90, minutes_played
+    select player, shots_per90
     from football.player_per90
     where comp = 'esp' and position_group = 'FW' and minutes_played >= 900
     order by shots_per90 desc
@@ -118,7 +118,7 @@
   required_columns: [player, teams, minutes_played]
   notes: "Yüzde sorusu. Oran toplamların oranıdır, maç yüzdelerinin ortalaması değil."
   reference_sql: |
-    select player, teams, pass_pct, minutes_played
+    select player, pass_pct
     from football.player_per90
     where comp = 'eng' and position_group = 'CB' and minutes_played >= 900
     order by pass_pct desc
@@ -131,7 +131,7 @@
   required_columns: [player, teams, minutes_played]
   notes: "position_group = 'CM'. Oran sorusu, eşik gerekli."
   reference_sql: |
-    select player, teams, aerials_won_per90, minutes_played
+    select player, aerials_won_per90
     from football.player_per90
     where comp = 'ita' and position_group = 'CM' and minutes_played >= 900
     order by aerials_won_per90 desc
@@ -148,7 +148,7 @@
     NULL'ları BAŞA koyuyor. "En yüksek" sorusu NULL döndüremez, yani filtre
     zorunlu.
   reference_sql: |
-    select player, teams, npxg_per_shot, minutes_played
+    select player, npxg_per_shot
     from football.player_per90
     where comp = 'eng' and minutes_played >= 900 and npxg_per_shot is not null
     order by npxg_per_shot desc
@@ -161,7 +161,7 @@
   required_columns: [player, teams, minutes_played]
   notes: "Oran sorusu. progressive_passes_per90 kolonu hazır, elle hesaplanmamalı."
   reference_sql: |
-    select player, teams, progressive_passes_per90, minutes_played
+    select player, progressive_passes_per90
     from football.player_per90
     where comp = 'esp' and minutes_played >= 900
     order by progressive_passes_per90 desc
@@ -174,7 +174,7 @@
   required_columns: [player, teams, minutes_played]
   notes: "Havuz küçük (10 oyuncu 900+ dk), limit 8 eşitlik sınırının altında."
   reference_sql: |
-    select player, teams, dribble_pct, minutes_played
+    select player, dribble_pct
     from football.player_per90
     where comp = 'ita' and position_group = 'W' and minutes_played >= 900
     order by dribble_pct desc
@@ -194,7 +194,7 @@
   forbidden: [minutes_filter]
   notes: "player_metrics eşiği kendi uygular; ek dakika filtresi yanlış."
   reference_sql: |
-    select player, teams, value, percentile, comparison_group_size
+    select player, percentile
     from football.player_metrics
     where metric = 'npxg_per90' and comp = 'esp' and position_group = 'FW'
     order by percentile desc
@@ -208,7 +208,7 @@
   forbidden: [minutes_filter]
   notes: "Yüzdelik filtresi. 100 her zaman grubun en iyisi."
   reference_sql: |
-    select player, teams, value, percentile, comparison_group_size
+    select player, percentile
     from football.player_metrics
     where metric = 'key_passes_per90' and comp = 'ita' and position_group = 'CM'
       and percentile > 80
@@ -222,7 +222,7 @@
   forbidden: [minutes_filter]
   notes: "position_group = 'GK'. Kaleci metriği yalnız kalecilerde anlamlı."
   reference_sql: |
-    select player, teams, value, percentile, comparison_group_size
+    select player, percentile
     from football.player_metrics
     where metric = 'saves_per90' and comp = 'eng' and position_group = 'GK'
     order by percentile desc
@@ -239,7 +239,7 @@
     katmanında çevrilmiş, yani "en iyi" = percentile desc. Ham değere göre
     sıralamak (value asc) de aynı sırayı verebilir ama yüzdelik doğru yoldur.
   reference_sql: |
-    select player, teams, value, percentile, comparison_group_size
+    select player, percentile
     from football.player_metrics
     where metric = 'miscontrols_per90' and comp = 'esp' and position_group = 'CB'
     order by percentile desc
@@ -253,7 +253,7 @@
   forbidden: [minutes_filter]
   notes: "Dahil edici sınır (>=), 75'in kendisi listeye girer."
   reference_sql: |
-    select player, teams, value, percentile, comparison_group_size
+    select player, percentile
     from football.player_metrics
     where metric = 'xa_per90' and comp = 'ita' and position_group = 'W'
       and percentile >= 75
@@ -275,7 +275,7 @@
     "Toplam" birleşik demek, yani player_season. player_season_club
     kullanmak oyuncuyu iki kez sayar ve toplamı böler.
   reference_sql: |
-    select player, teams, clubs, goals, minutes_played
+    select player, goals
     from football.player_season
     where clubs > 1
     order by goals desc
@@ -291,7 +291,7 @@
     Tersi: "her kulüpteki" ayrıştırma istiyor, yani player_season_club.
     Birleşik view bu soruyu cevaplayamaz.
   reference_sql: |
-    select player, team, minutes_played, matches
+    select player, team, minutes_played
     from football.player_season_club
     where player_id in (
       select player_id
@@ -322,7 +322,7 @@
   forbidden: [player_season_club]
   notes: "Birleşik toplam. clubs > 1 filtresi player_season'da hazır."
   reference_sql: |
-    select player, teams, clubs, assists, minutes_played
+    select player, assists
     from football.player_season
     where clubs > 1
     order by assists desc
@@ -434,8 +434,7 @@
     olduğu için sıralama date'ten sonra home_team ile de ayrılıyor; tek
     başına gol toplamı 5. sırada eşitliğe düşüyor.
   reference_sql: |
-    select date, home_team, away_team, home_score, away_score,
-           home_score + away_score as total_goals
+    select date, home_team, away_team, home_score + away_score as total_goals
     from football.matches
     where comp = 'eng'
     order by total_goals desc, date, home_team
@@ -476,7 +475,7 @@
     shots tablosu, players ile join. 9543 şutun 55'inde xg NULL ve `desc`
     sıralamada NULL'lar başa geliyor, bu yüzden filtre gerekli.
   reference_sql: |
-    select p.player, s.xg, s.is_goal, s.body_part
+    select p.player, s.xg
     from football.shots s
     join football.players p on p.player_id = s.player_id
     where s.comp = 'eng' and s.xg is not null
@@ -490,7 +489,7 @@
   required_columns: [player]
   notes: "passes tablosu, is_completed türetilmiş boolean."
   reference_sql: |
-    select pl.player, ps.pass_length, ps.comp
+    select pl.player, ps.pass_length
     from football.passes ps
     join football.players pl on pl.player_id = ps.player_id
     where ps.is_completed

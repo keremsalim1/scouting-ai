@@ -90,11 +90,35 @@ def _sort_key(row: tuple) -> tuple:
     return tuple(key)
 
 
-def _rows_equal(reference: tuple, candidate: tuple) -> str | None:
-    """Compare one row pair; return the offending column, or None if equal."""
-    for index, (expected, actual) in enumerate(zip(reference, candidate, strict=True), start=1):
+def _column_mapping(reference: tuple, candidate: tuple) -> tuple[int, ...] | None:
+    """Where each reference column sits in the candidate row, or None.
+
+    Greedy left to right, so the reference's column ORDER is preserved while
+    its starting position is not. This is what lets a candidate that answered
+    `select player_id, player, count(*)` match a reference of
+    `select player, count(*)`: the extra column is leading rather than
+    trailing, the information is complete, and anchoring at position 0 would
+    call the more informative answer wrong.
+    """
+    mapping: list[int] = []
+    start = 0
+    for cell in reference:
+        for index in range(start, len(candidate)):
+            if values_equal(cell, candidate[index]):
+                mapping.append(index)
+                start = index + 1
+                break
+        else:
+            return None
+    return tuple(mapping)
+
+
+def _rows_equal(reference: tuple, candidate: tuple, mapping: tuple[int, ...]) -> str | None:
+    """Compare one row pair through `mapping`; name the offending column."""
+    for position, (expected, source) in enumerate(zip(reference, mapping, strict=True), start=1):
+        actual = candidate[source] if source < len(candidate) else None
         if not values_equal(expected, actual):
-            return f"column {index}: expected {expected!r}, got {actual!r}"
+            return f"column {position}: expected {expected!r}, got {actual!r}"
     return None
 
 
@@ -114,30 +138,58 @@ def compare(
         return Comparison(equal=True)
 
     width = len(reference[0])
-    trimmed: list[tuple] = []
     for row in candidate:
         if len(row) < width:
             return Comparison(
                 equal=False,
                 reason=f"column count: expected at least {width}, got {len(row)}",
             )
-        trimmed.append(tuple(row[:width]))
 
-    left, right = list(reference), trimmed
+    # One mapping for the whole result set. Choosing columns row by row would
+    # let a candidate match by cherry-picking a different column in each row,
+    # so the mapping is found once and then every row is held to it.
+    #
+    # Which candidate row it is derived from depends on the question: for a
+    # ranking the first row must be the first row, so only that pairing is
+    # tried. For a set, any candidate row may correspond to the reference's
+    # first, so each is tried until one matches.
+    probes = candidate[:1] if order_sensitive else candidate
+    mapping = next(
+        (m for row in probes if (m := _column_mapping(reference[0], row)) is not None),
+        None,
+    )
+    if mapping is None:
+        missing = _first_unmatched(reference[0], candidate[0])
+        return Comparison(
+            equal=False,
+            reason=(
+                f"row 1, column {missing}: {reference[0][missing - 1]!r} "
+                "is not in the candidate row"
+            ),
+        )
+
+    left = list(reference)
+    right = [tuple(row[i] if i < len(row) else None for i in mapping) for row in candidate]
     if not order_sensitive:
-        # Sorting happens on the trimmed prefix, not the raw candidate row, so
-        # an extra trailing column cannot reorder one side against the other.
         left = sorted(left, key=_sort_key)
         right = sorted(right, key=_sort_key)
 
     for position, (expected_row, actual_row) in enumerate(zip(left, right, strict=True), start=1):
-        if len(expected_row) != len(actual_row):
-            return Comparison(
-                equal=False,
-                reason=f"row {position}: column count differs",
-            )
-        difference = _rows_equal(expected_row, actual_row)
+        difference = _rows_equal(expected_row, actual_row, tuple(range(len(expected_row))))
         if difference is not None:
             return Comparison(equal=False, reason=f"row {position}, {difference}")
 
     return Comparison(equal=True)
+
+
+def _first_unmatched(reference: tuple, candidate: tuple) -> int:
+    """Which reference column (1-based) could not be located."""
+    start = 0
+    for position, cell in enumerate(reference, start=1):
+        for index in range(start, len(candidate)):
+            if values_equal(cell, candidate[index]):
+                start = index + 1
+                break
+        else:
+            return position
+    return len(reference)
