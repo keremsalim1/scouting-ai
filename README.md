@@ -10,7 +10,7 @@ reports. A core rule runs through the whole project: **the LLM never produces
 numbers.** Every figure in a report comes from a tool or database query; the
 model only writes the interpretation.
 
-Status: **Day 6 complete — text-to-SQL at 80.6% on a 40-question benchmark.**
+Status: **Day 6 complete — text-to-SQL at 86.1% on a 40-question benchmark.**
 Plan: [docs/PLAN.md](docs/PLAN.md) · Decisions: [DECISIONS.md](DECISIONS.md)
 
 ## Data
@@ -299,92 +299,88 @@ identical rows and still be wrong reasoning).
 
 | | |
 | --- | --- |
-| Run | `gemini/gemini-3.6-flash`, 2026-11-17, 121 s, 0 infrastructure errors |
-| Accuracy | **80.6%** (29 of 36) — **target of 70% met** |
+| Model | `gemini/gemini-3.8-flash`, 2026-11-17, 0 infrastructure errors |
+| Accuracy | **86.1%** (31 of 36) — **target of 70% met** |
 | Denominator | 36 of 40; the 4 `unanswerable` questions have no reference result set |
-| Measured cost | **$0.23** per run (283,304 input + 4,975 output tokens, priced from `config/llm_pricing.yaml`) |
-| Weak model | `gemini-3.1-flash-lite`, also 29/36, $0.12 |
+| Measured cost | **$0.27** (354,127 input + 2,493 output tokens, priced from `config/llm_pricing.yaml`) |
+| Weak model | `gemini-3.1-flash-lite`, 29/36 (80.6%), $0.12 |
+| Previous model | `gemini-3.6-flash`, 29/36 — identical price, so 3.8 is the default |
 
 ### Accuracy by category
 
 | Category | n | correct | ran | required columns | no forbidden structure |
 | --- | --- | --- | --- | --- | --- |
 | `totals` | 5 | 100% | 5/5 | 5/5 | 5/5 |
+| `rates` | 6 | 100% | 6/6 | **4/6** | 6/6 |
 | `filters` | 5 | 100% | 5/5 | 5/5 | 5/5 |
-| `rates` | 6 | 83% | 6/6 | **2/6** | 6/6 |
 | `percentiles` | 5 | 80% | 5/5 | 5/5 | 5/5 |
-| `transfers` | 5 | 80% | 5/5 | 3/5 | 4/5 |
+| `transfers` | 5 | 80% | 5/5 | **3/5** | 4/5 |
 | `teams` | 5 | 80% | 5/5 | 5/5 | 5/5 |
-| `match_detail` | 5 | 40% | 5/5 | 5/5 | 5/5 |
+| `match_detail` | 5 | 60% | 5/5 | 5/5 | 5/5 |
 | `unanswerable` | 4 | n/a | 4/4 | 4/4 | 4/4 |
 
-Two columns tell different stories and that is the point. `rates` answers the
-question correctly 83% of the time but satisfies the output convention only
-**2 times in 6**: the model computes the right per-90 value and omits the
-`minutes_played` it rests on. A rate without its sample is a number a scouting
-report is not allowed to print, so that gap is real — it is just not an
-accuracy problem, and collapsing the two into one score hid it.
+Two columns tell different stories and that is the point. `rates` answers every
+question correctly and satisfies the output convention **4 times in 6**: the
+model computes the right per-90 and sometimes drops the `minutes_played` it
+rests on. A rate without its sample is a number a scouting report is not
+allowed to print, so the gap is real — it is just not an accuracy problem, and
+collapsing the two into one score hid it completely.
 
-`match_detail` at 40% is the weakest category and it was predicted by nobody.
-It is also the category the schema prompt says least about.
-
-### The seven remaining failures
+### The five remaining failures
 
 | Question | What happened |
 | --- | --- |
-| `rates-03` | used `aerials_per90` where the question means `aerials_won_per90` |
-| `percentiles-04` | the inverted-metric trap: `miscontrols_per90` has `higher_is_better: false`, so "best" means `percentile desc`. **Both models fail this one** |
-| `transfers-02` | answered a per-club question from `player_season` (combined), returning 96 rows where the club split has 144. Caught by the `forbidden` dimension, not by the row count alone |
-| `teams-02` | wrote `round(sum(xg), 2)`, so 59.10 against a reference of 59.1034. A defensible presentation choice that the 1e-6 tolerance rejects — see Limitations |
-| `match_detail-01`, `-03`, `-04` | genuinely different result sets |
+| `percentiles-04` | the inverted-metric trap: `miscontrols_per90` has `higher_is_better: false`, so "best" means `percentile desc`. **Both models fail it** — the clearest prompt gap in the suite |
+| `transfers-02` | answered a per-club question from `player_season` (combined), returning 96 rows where the club split has 144. Caught by the `forbidden` dimension |
+| `teams-02` | wrote `round(sum(xg), 2)`, so 59.10 against a reference of 59.1034. A defensible presentation choice the 1e-6 tolerance rejects — see Limitations |
+| `match_detail-02`, `-04` | genuinely different result sets |
 
-So of seven failures, four are wrong SQL, one is the wrong relation, one is a
-rounding choice, and one is a prompt gap both models share. `percentiles-04`
-and the `rates` convention miss are the two clearest prompt targets.
+Four of five are real. `percentiles-04` and the `rates` convention gap are the
+two things to fix in the prompt.
 
 ### The repair loop does not help
 
 `generate.py` retries once with the guard's refusal reason attached, and its own
 docstring said Day 6 would measure whether that earns its latency. It does not:
+**40 of 40 questions passed the guard on the first attempt**, so the repair path
+never executed. Measured on three runs across two models.
 
-| | |
-| --- | --- |
-| Passed on the first attempt | 40 |
-| Fixed by the repair attempt | **0** |
-| Still refused after the repair | 0 |
+### What the judge got wrong, and what it cost to find out
 
-The guard never refused anything the strong model produced, so the repair path
-never executed. Measured twice, on both models, across two runs.
+The first run scored **66.7%** and most of the gap was the judge, not the model.
+Three separate defects, each found by reading the rows rather than trusting the
+score:
 
-### How the judge was corrected, and what it cost to find out
+1. **Positional column matching.** The model answered
+   `select player_id, player, count(*)` where the reference asks for
+   `select player, count(*)`. The information is complete and there is more of
+   it, but a prefix comparison read column 1 as `104058` where it wanted
+   `'Ademola Lookman'`. The weak model wrote fewer columns and scored correct on
+   the same question: the benchmark was penalising the more informative answer.
+2. **Context columns inside `correct`.** Five failures were an omitted
+   `minutes_played` or `clubs` — an output-convention miss that belongs to
+   `required_columns`. References now hold **exactly the answer** (the row's
+   identity plus the measure asked about) and the comparator locates them inside
+   the candidate as an ordered subsequence. One column mapping is derived from
+   the first row pair and applied to every row; choosing columns per row would
+   let a candidate match by cherry-picking a different column each time.
+3. **Ties inside a ranking.** `match_detail-01` returned the same five matches
+   with the same goal totals, differing only in the order of the three matches
+   tied on 7 goals. The reference's `order by total_goals desc, date` keeps it
+   deterministic, but which 7-goal match comes first is the author's habit. Rows
+   tied on the **leading** order-by key are now interchangeable. Aligning the
+   gold set's own cut check with that rule then exposed two questions where
+   "the top 5" is mathematically ambiguous — five Premier League matches share
+   7 goals, so the cut moved to 7.
 
-The first run scored **66.7%** and the gap was mostly the judge, not the model.
-Of 12 failures, only 3 were wrong SQL. Four were a leading identifier column:
+66.7% → 86.1% with the model unchanged. That difference was measurement error,
+and it is worth saying plainly: the first number was wrong about the model and
+right about the benchmark. Total provider spend to establish all of this,
+including every re-run: **about $1.15.**
 
-```sql
--- reference:  select player, count(distinct comp) ...
--- the model:  SELECT player_id, player, COUNT(DISTINCT comp) AS n_comps, ...
-```
-
-The information is complete and there is more of it, but a positional prefix
-comparison read column 1 as `104058` where it wanted `'Ademola Lookman'`. The
-weak model wrote fewer columns and scored correct on the same question — the
-benchmark was penalising the more informative answer.
-
-Five more failures were an omitted context column (`minutes_played`, `clubs`),
-which is an output-convention miss and belongs to `required_columns`.
-
-Both were fixed, and neither works without the other. References now contain
-**exactly the answer** — the row's identity plus the measure asked about — and
-the comparator locates the reference's columns inside the candidate as an
-ordered subsequence instead of anchoring at position 0. One column mapping is
-derived from the first row pair and applied to every row; choosing columns per
-row would let a candidate match by cherry-picking a different column each time,
-which a test pins.
-
-Accuracy went 66.7% → 80.6% without the model changing. That difference was
-measurement error, and it is worth saying plainly: the first number was wrong
-about the model and right about the benchmark.
+Re-measuring the two re-cut questions cost about a cent rather than $0.22,
+because `--merge` stitches a partial run into the full result instead of
+repeating all 40.
 
 ### Limitations
 
@@ -394,12 +390,12 @@ about the model and right about the benchmark.
   this question is a known false negative.
 - **Not deterministic.** Gemini 3.x refuses the `temperature` parameter, which
   the report records on every run. Two runs of the same model can differ.
-- **One run per question.** No variance estimate; a disagreement between runs
-  cannot currently be told from a disagreement between models.
-- **The weak model stopped being a weak model.** Both scored 29/36 with only
-  four disagreements, so the differential signal that D-025 relied on is thin
-  on this gold set. A genuinely weaker model, or harder questions, would be
-  needed to recover it.
+- **One run per question.** No variance estimate, so a disagreement between runs
+  cannot be told from a disagreement between models.
+- **The weak model stopped being weak.** It scored 29/36 against the strong
+  model's 31/36, so the differential signal D-025 relied on is thin on this gold
+  set. A genuinely weaker model, or harder questions, would be needed to
+  recover it.
 
 ### What CI checks
 
@@ -412,20 +408,22 @@ the relations no question asks about (`lineups`, `player_match_stats`,
 `position_map`, `teams`). Coverage is reported, never enforced — a gap is a
 direction, not a failure.
 
-Those checks earned their place on their first run by finding **five defects in
-the gold set this developer had just written**: a reference that used the view
-it forbade, two that cut on a tie (where two different answers are both correct
-and the comparator cannot tell), and two that ranked by a `DESC` column
-containing NULLs, which Postgres sorts *first*.
+Those checks have now found **seven defects in the gold set this developer
+wrote**: a reference that used the view it forbade, four that cut on a tie
+(where two different answers are both correct and the comparator cannot tell),
+and two that ranked by a `DESC` column containing NULLs, which Postgres sorts
+*first*.
 
 ### Running it
 
 The free tier allows **20 requests per day** on a strong flash model, so the
-40-question suite cannot run there in one day. Paid, the whole thing is 121
-seconds and $0.23. For the free tier the suite splits into batches
-(`eval-sql-batch1/2/3`) that `eval-sql-merge` stitches into one accuracy
-number, and `eval-sql-smoke` runs one question per category inside a single
-day's allowance.
+40-question suite cannot run there in one day — and a retry policy of three
+makes it worse, since one unanswered question can cost three requests. Paid,
+the whole suite is about 100 seconds and $0.22. For the free tier the suite
+splits into batches (`eval-sql-batch1/2/3`) that `eval-sql-merge` stitches into
+one accuracy number, `eval-sql-smoke` runs one question per category inside a
+single day's allowance, and a daily-quota 429 stops the run cleanly rather than
+being retried.
 
 ## Day 1 — data validation
 

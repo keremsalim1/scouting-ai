@@ -425,20 +425,20 @@
 # ---------------------------------------------------------------------------
 
 - id: match_detail-01
-  question: "Premier League'de en çok gol atılan 5 maç hangileri?"
+  question: "Premier League'de en çok gol atılan 7 maç hangileri?"
   category: match_detail
   order_sensitive: true
   required_columns: [home_team, away_team]
   notes: >
-    matches tablosu, home_score + away_score toplamı. İki maç aynı gün 7 gollü
-    olduğu için sıralama date'ten sonra home_team ile de ayrılıyor; tek
-    başına gol toplamı 5. sırada eşitliğe düşüyor.
+    matches tablosu, home_score + away_score toplamı. Limit 7 seçildi: 7 gollü
+    beş maç var ve kümülatif tam 7'de bitiyor, yani "ilk 5" matematiksel olarak
+    belirsiz - 5. sıraya hangi maçın girdiği keyfi olurdu.
   reference_sql: |
     select date, home_team, away_team, home_score + away_score as total_goals
     from football.matches
     where comp = 'eng'
     order by total_goals desc, date, home_team
-    limit 5
+    limit 7
 
 - id: match_detail-02
   question: "Which 5 La Liga matches had the highest attendance?"
@@ -454,17 +454,18 @@
     limit 5
 
 - id: match_detail-03
-  question: "Serie A'da en çok şut çekilen 5 maç"
+  question: "Serie A'da en çok şut çekilen 6 maç"
   category: match_detail
   order_sensitive: true
   required_columns: [home_team, away_team]
-  notes: "matches.n_shots hazır kolon; shots tablosunu saymak da aynı sonucu verir."
+  notes: "matches.n_shots hazır kolon. Limit 6: 39 şutlu iki maç kümülatif 6da
+    bitiyor, 5 olsa kesme noktası eşitliğe düşerdi."
   reference_sql: |
     select date, home_team, away_team, n_shots
     from football.matches
     where comp = 'ita'
     order by n_shots desc, date
-    limit 5
+    limit 6
 
 - id: match_detail-04
   question: "Premier League'de xG'si en yüksek 10 şut kime ait?"

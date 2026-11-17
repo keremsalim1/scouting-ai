@@ -175,7 +175,11 @@ def check_no_tie_at_the_cut(gold: goldset.GoldSet, conn: psycopg.Connection) -> 
     for q in gold.questions:
         if not q.order_sensitive or not q.reference_sql:
             continue
-        columns = structure.order_columns(q.reference_sql)
+        # The SAME key the comparator ties on: the leading ORDER BY column.
+        # Checking the full key (including the author's trailing tiebreak)
+        # hides a real ambiguity - four matches on 39 shots and a limit of
+        # 5 means which one makes the cut is arbitrary.
+        columns = structure.ranking_keys(q.reference_sql)
         rows = execute.run_sql(conn, q.reference_sql).rows
         if not rows:
             continue

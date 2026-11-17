@@ -15,13 +15,15 @@ Kaynak: onaylanmış plan dokümanı. Her günün kabul kriteri karşılanmadan 
 
 ### Gün 6 durumu (2026-11-17) — tamamlandı
 Benchmark, `make eval-sql` / `eval-sql-both` / `eval-sql-gold` / `eval-sql-smoke` /
-`eval-sql-merge` ve GitHub Actions kuruldu; hata analizi README'de.
-**Kabul kriteri karşılandı: %80,6 (29/36), eşik %70** — `gemini-3.6-flash`, 121 sn,
-0 altyapı hatası, ölçülen maliyet $0,23.
+`eval-sql-merge` / `eval-sql-batch1-3` ve GitHub Actions kuruldu; hata analizi README'de.
+**Kabul kriteri karşılandı: %86,1 (31/36), eşik %70** — `gemini-3.8-flash`, 0 altyapı
+hatası, ölçülen maliyet $0,27.
 
-İlk koşu %66,7 verdi ve eşiği kaçırdı; 12 hatadan yalnız 3'ü yanlış SQL'di, gerisi
-hakemin konumsal kolon karşılaştırmasıydı (D-029). Hakem düzeltilince aynı model
-%80,6 aldı. CI yerelde doğrulandı; GitHub'da henüz koşmadı.
+İlk koşu %66,7 verdi. Hatalar tek tek okununca **hakemin üç kusuru** çıktı: konumsal
+kolon karşılaştırması, bağlam kolonlarının `correct` içinde puanlanması, ve sıralama
+içindeki eşitliğin karar vermesi (D-029). Üçü düzeltilince aynı soru seti %86,1 verdi,
+model değişmeden. Toplam sağlayıcı harcaması, tüm tekrar koşular dahil ~$1,15.
+CI yerelde doğrulandı; GitHub Actions'ta henüz koşmadı.
 
 ## Hafta 2 — Profiller, benzerlik, bilgi tabanı, API/UI → `v0.2`
 
