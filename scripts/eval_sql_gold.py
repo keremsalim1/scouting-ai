@@ -28,7 +28,7 @@ from sqlglot import exp
 
 from football_ai.console import force_utf8
 from football_ai.data.db import connect, readonly_dsn
-from football_ai.evals.sql import execute, goldset, structure
+from football_ai.evals.sql import coverage, execute, goldset, structure
 from football_ai.sql_agent import generate, guard
 
 # From the design doc. Changing these means changing what the benchmark
@@ -235,6 +235,12 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{references}/{references} reference queries valid, {len(gold.questions)} questions")
     for name, items in gold.by_category().items():
         print(f"  {name:<14} {len(items)}")
+    # Coverage is reported, never enforced: a gap is a growth direction, and
+    # failing CI over one would reward breadth over the error-driven questions
+    # that carry the signal.
+    print()
+    for line in coverage.summary(gold):
+        print(line)
     return 0
 
 

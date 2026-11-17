@@ -303,3 +303,17 @@ def test_progress_is_printed_per_question(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "q-01" in out
     assert "q-02" in out
+
+
+def test_smoke_runs_one_question_per_category(tmp_path, monkeypatch):
+    """A quick regression check that fits inside one day of free-tier quota:
+    20 requests a day means the full 40-question suite cannot be a habit."""
+    seen: list[str] = []
+    _stub_run(monkeypatch, lambda model: _suite(True, model=model), seen)
+    eval_sql.main(["--smoke", "--out", str(tmp_path)])
+    assert seen == ["totals-01", "rates-01"]
+
+
+def test_smoke_and_category_cannot_be_combined(tmp_path, capsys):
+    assert eval_sql.main(["--smoke", "--category", "rates", "--out", str(tmp_path)]) == 2
+    assert "smoke" in capsys.readouterr().out

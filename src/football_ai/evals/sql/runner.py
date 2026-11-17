@@ -83,6 +83,9 @@ class SuiteResult:
     reasoning_effort_supported: bool
     retries_used: int
     seconds: float = 0.0
+    # Billed tokens as the provider reported them, so a run can price itself.
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
     @property
     def model_slug(self) -> str:
@@ -313,4 +316,6 @@ def run_suite(
         reasoning_effort_supported=bool(getattr(client, "reasoning_effort_supported", True)),
         retries_used=int(getattr(client, "retries_used", 0)),
         seconds=(dt.datetime.now(dt.UTC) - started).total_seconds(),
+        prompt_tokens=int(getattr(client, "prompt_tokens", 0)),
+        completion_tokens=int(getattr(client, "completion_tokens", 0)),
     )

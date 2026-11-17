@@ -139,3 +139,75 @@ def test_load_rejects_a_yaml_document_that_is_not_a_list(tmp_path):
     path.write_text("questions: []\n", encoding="utf-8")
     with pytest.raises(ValueError, match="list"):
         goldset.load(path)
+
+
+# ---------------------------------------------------------------------------
+# Coverage: a measurable growth direction instead of "write more questions"
+# ---------------------------------------------------------------------------
+
+
+def test_coverage_names_the_relations_no_question_touches():
+    from football_ai.evals.sql import coverage
+
+    gaps = coverage.relation_gaps(goldset.load())
+    assert isinstance(gaps, tuple)
+    # lineups and player_match_stats hold real scouting questions and the
+    # first gold set never touched them; this test documents the gap rather
+    # than asserting it stays, so it is a floor, not a ceiling.
+    assert all(isinstance(name, str) for name in gaps)
+
+
+def test_coverage_counts_touched_relations():
+    from football_ai.evals.sql import coverage
+
+    gs = goldset.parse(
+        [
+            {
+                "id": "totals-01",
+                "question": "soru",
+                "category": "totals",
+                "order_sensitive": True,
+                "reference_sql": "select player from football.player_season limit 1",
+            }
+        ]
+    )
+    touched = coverage.relations_touched(gs)
+    assert touched == frozenset({"player_season"})
+    assert "shots" in coverage.relation_gaps(gs)
+
+
+def test_coverage_names_the_metrics_no_question_filters_on():
+    from football_ai.evals.sql import coverage
+
+    gs = goldset.parse(
+        [
+            {
+                "id": "percentiles-01",
+                "question": "soru",
+                "category": "percentiles",
+                "order_sensitive": True,
+                "reference_sql": (
+                    "select player, percentile from football.player_metrics "
+                    "where metric = 'npxg_per90' limit 1"
+                ),
+            }
+        ]
+    )
+    assert coverage.metrics_touched(gs) == frozenset({"npxg_per90"})
+    assert "pass_pct" in coverage.metric_gaps(gs)
+
+
+def test_coverage_ignores_a_question_with_no_reference():
+    from football_ai.evals.sql import coverage
+
+    gs = goldset.parse(
+        [
+            {
+                "id": "unanswerable-01",
+                "question": "soru",
+                "category": "unanswerable",
+                "order_sensitive": False,
+            }
+        ]
+    )
+    assert coverage.relations_touched(gs) == frozenset()

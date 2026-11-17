@@ -520,3 +520,41 @@ def test_other_provider_errors_still_propagate(monkeypatch) -> None:
     client = generate.LiteLLMClient(model="x", temperature=0, timeout_s=5)
     with pytest.raises(RuntimeError, match="rate limit"):
         client.complete("sys", "user")
+
+
+def _fake_litellm_with_usage(monkeypatch, *, prompt_tokens: int, completion_tokens: int):
+    """Stand in for litellm, returning a usage block like the real provider."""
+    import sys
+    import types
+
+    def completion(**_kwargs):
+        message = types.SimpleNamespace(content="select 1")
+        usage = types.SimpleNamespace(
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+        )
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)], usage=usage)
+
+    module = types.ModuleType("litellm")
+    module.completion = completion
+    monkeypatch.setitem(sys.modules, "litellm", module)
+
+
+def test_client_accumulates_token_usage(monkeypatch) -> None:
+    """Measured tokens replace guessed ones: the run can price itself instead
+    of being estimated from character counts."""
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+    _fake_litellm_with_usage(monkeypatch, prompt_tokens=5000, completion_tokens=120)
+    client = generate.LiteLLMClient(model="x", timeout_s=5)
+    client.complete("sys", "user")
+    client.complete("sys", "user")
+    assert client.prompt_tokens == 10_000
+    assert client.completion_tokens == 240
+
+
+def test_client_tolerates_a_provider_that_reports_no_usage(monkeypatch) -> None:
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+    _fake_litellm(monkeypatch, reject_temperature=False)
+    client = generate.LiteLLMClient(model="x", timeout_s=5)
+    client.complete("sys", "user")
+    assert client.prompt_tokens == 0
+    assert client.completion_tokens == 0

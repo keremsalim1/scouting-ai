@@ -455,3 +455,70 @@ def test_json_serialises_values_psycopg_returns():
     )
     payload = json.loads(report.to_json([suite]))
     assert payload["suites"][0]["results"][0]["reference_rows"][0][0] == "1.5"
+
+
+# ---------------------------------------------------------------------------
+# Measured cost
+# ---------------------------------------------------------------------------
+
+
+def _priced_suite(prompt_tokens: int, completion_tokens: int, model: str) -> runner.SuiteResult:
+    return runner.SuiteResult(
+        model=model,
+        started_at=dt.datetime(2026, 11, 17, 12, 0, 0, tzinfo=dt.UTC),
+        results=(_result("totals-01"),),
+        temperature_supported=True,
+        reasoning_effort_supported=True,
+        retries_used=0,
+        seconds=10.0,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
+
+
+def test_cost_multiplies_measured_tokens_by_the_price_table():
+    suite = _priced_suite(1_000_000, 1_000_000, "gemini/gemini-3.6-flash")
+    assert report.cost_usd(suite) == pytest.approx(0.75 + 3.75)
+
+
+def test_cost_is_none_for_a_model_with_no_published_price():
+    suite = _priced_suite(1_000_000, 0, "gemini/gemma-4-31b-it")
+    assert report.cost_usd(suite) is None
+
+
+def test_markdown_prints_measured_tokens_and_cost():
+    md = report.to_markdown(
+        [_priced_suite(225_000, 20_000, "gemini/gemini-3.6-flash")], threshold=0.70
+    )
+    assert "225,000" in md
+    assert "$" in md
+
+
+def test_markdown_dates_the_price_it_used():
+    """A cost with no as-of date is a number nobody can check later."""
+    md = report.to_markdown(
+        [_priced_suite(225_000, 20_000, "gemini/gemini-3.6-flash")], threshold=0.70
+    )
+    assert str(report.PRICING["as_of"]) in md
+
+
+def test_markdown_reports_tokens_without_a_cost_when_the_price_is_unknown():
+    md = report.to_markdown([_priced_suite(225_000, 2_000, "stub/unpriced")], threshold=0.70)
+    assert "225,000" in md
+    assert "fiyat bilinmiyor" in md
+
+
+def test_merge_sums_the_token_counts():
+    """Batched runs have to add up, or a split run under-reports its cost."""
+    a = _priced_suite(100_000, 1_000, "gemini/gemini-3.6-flash")
+    b = _priced_suite(50_000, 500, "gemini/gemini-3.6-flash")
+    merged = report.merge([a, b])
+    assert merged.prompt_tokens == 150_000
+    assert merged.completion_tokens == 1_500
+
+
+def test_from_json_restores_the_token_counts():
+    suite = _priced_suite(123_456, 789, "gemini/gemini-3.6-flash")
+    restored = report.from_json(report.to_json([suite]))[0]
+    assert restored.prompt_tokens == 123_456
+    assert restored.completion_tokens == 789

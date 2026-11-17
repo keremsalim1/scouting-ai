@@ -25,3 +25,7 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+
+# Local record of questions typed at `make ask`. Feeds gold-set growth;
+# not a repo artefact.
+reports/ask_log.jsonl

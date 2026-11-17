@@ -234,6 +234,25 @@ class LiteLLMClient:
         # cannot distinguish "one slow answer" from "three fast refusals and
         # a retry", and those two call for opposite fixes.
         self.call_log: list[tuple[float, str]] = []
+        # Tokens the provider says it billed, accumulated over every call this
+        # client makes. Measured rather than estimated from character counts,
+        # so a run can price itself and a decision about paying for a higher
+        # quota rests on a number instead of a guess.
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+
+    def _record_usage(self, response: object) -> None:
+        """Add this call's billed tokens, if the provider reported any.
+
+        Written defensively: `usage` is absent on some providers and on
+        streamed responses, and a missing field must not turn a working run
+        into a crash over bookkeeping.
+        """
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
 
     def _optional_params(self) -> dict[str, object]:
         """The parameters this provider has not yet rejected."""
@@ -313,6 +332,7 @@ class LiteLLMClient:
                     continue
                 raise
             self.call_log.append((time.perf_counter() - started, "ok"))
+            self._record_usage(response)
             return response.choices[0].message.content or ""
 
 

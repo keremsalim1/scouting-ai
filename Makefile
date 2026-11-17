@@ -17,7 +17,7 @@ PSQL_DB ?= football
 .PHONY: help db-up db-down db-reset db-shell db-wait migrate etl etl-bench counts \
         ask schema-prompt llm-models validate test test-data test-db lint fmt check setup \
         eval-sql eval-sql-both eval-sql-gold eval-sql-merge \
-        eval-sql-batch1 eval-sql-batch2 eval-sql-batch3
+        eval-sql-batch1 eval-sql-batch2 eval-sql-batch3 eval-sql-smoke
 
 help:
 	@echo "setup      db-up + migrate + validate + etl  (first run, from scratch)"
@@ -38,6 +38,7 @@ help:
 	@echo "eval-sql-gold   validate the gold set: guard + EXPLAIN, no LLM (what CI runs)"
 	@echo "eval-sql-batch1/2/3  one day's worth of questions (free tier is 20 req/day)"
 	@echo "eval-sql-merge  stitch the batches into one accuracy number (no LLM call)"
+	@echo "eval-sql-smoke  one question per category: quick regression, 8 requests"
 	@echo "test       unit tests        test-data  real OpenPlay    test-db  database"
 	@echo "lint fmt   ruff check / ruff format"
 	@echo "check      lint + format check + unit tests"
@@ -114,6 +115,11 @@ eval-sql-batch2:
 
 eval-sql-batch3:
 	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --only filters-01,filters-02,filters-03,filters-04,filters-05,unanswerable-01,unanswerable-02,unanswerable-03,unanswerable-04
+
+# One question per category. 8 requests, so it fits the daily free-tier
+# allowance and can be run after every prompt change.
+eval-sql-smoke:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --smoke
 
 # Stitch the batches into one accuracy number. Makes no provider call.
 eval-sql-merge:

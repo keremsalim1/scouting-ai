@@ -65,6 +65,14 @@ def _select(gold: goldset.GoldSet, args: argparse.Namespace) -> tuple[goldset.Qu
     A filter that silently matched nothing would be reported as 0% accuracy,
     which reads as a model failure.
     """
+    if args.smoke:
+        if args.category or args.only:
+            print("--smoke picks the questions itself; drop --category/--only")
+            return None
+        # One question per category: enough to notice a prompt change broke a
+        # whole category, small enough to run inside one day of free-tier
+        # quota (20 requests), which the full suite is not.
+        return tuple(items[0] for items in gold.by_category().values())
     if args.only:
         ids = tuple(part.strip() for part in args.only.split(",") if part.strip())
         try:
@@ -153,6 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--models", help="comma-separated; the first one gates the exit code")
     parser.add_argument("--category", help=f"one of: {', '.join(goldset.CATEGORIES)}")
     parser.add_argument("--only", help="comma-separated question ids")
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="one question per category: a quick regression check inside one day's quota",
+    )
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="report directory")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--max-rows", type=int, default=guard.DEFAULT_LIMIT)

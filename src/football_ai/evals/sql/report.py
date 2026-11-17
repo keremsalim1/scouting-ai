@@ -24,10 +24,42 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
+import yaml
+
+from football_ai.data.db import REPO_ROOT
 from football_ai.evals.sql.runner import QuestionResult, SuiteResult
 
 # Above this share of infra errors the run is noise, not a measurement.
 INFRA_ERROR_WARNING_RATIO = 0.10
+
+PRICING_PATH = REPO_ROOT / "config" / "llm_pricing.yaml"
+
+
+def _load_pricing() -> dict:
+    """Prices are data, not constants: Gemini Flash doubles on 2027-01-01."""
+    if not PRICING_PATH.exists():  # pragma: no cover - the file ships with the repo
+        return {"as_of": "unknown", "models": {}}
+    return yaml.safe_load(PRICING_PATH.read_text(encoding="utf-8"))
+
+
+PRICING = _load_pricing()
+
+
+def cost_usd(suite: SuiteResult) -> float | None:
+    """What this run actually cost, or None when the model has no listed price.
+
+    The token counts come from the provider's own usage block, so only the
+    multiplication is local. An unpriced model reports tokens and no cost
+    rather than a guess.
+    """
+    prices = (PRICING.get("models") or {}).get(suite.model)
+    if not prices:
+        return None
+    return (
+        suite.prompt_tokens * float(prices["input"])
+        + suite.completion_tokens * float(prices["output"])
+    ) / 1_000_000
+
 
 DIMENSIONS = ("correct", "executes", "required_columns", "no_forbidden")
 
@@ -183,6 +215,9 @@ def to_json(suites: Sequence[SuiteResult]) -> str:
                 "temperature_supported": suite.temperature_supported,
                 "reasoning_effort_supported": suite.reasoning_effort_supported,
                 "retries_used": suite.retries_used,
+                "prompt_tokens": suite.prompt_tokens,
+                "completion_tokens": suite.completion_tokens,
+                "cost_usd": cost_usd(suite),
                 "scores": _scores_payload(score(suite.results)),
                 "scores_by_category": {
                     name: _scores_payload(s) for name, s in by_category(suite).items()
@@ -240,6 +275,8 @@ def from_json(text: str) -> tuple[SuiteResult, ...]:
                 reasoning_effort_supported=raw["reasoning_effort_supported"],
                 retries_used=raw["retries_used"],
                 seconds=raw["seconds"],
+                prompt_tokens=raw.get("prompt_tokens", 0),
+                completion_tokens=raw.get("completion_tokens", 0),
             )
         )
     return tuple(suites)
@@ -275,6 +312,8 @@ def merge(suites: Sequence[SuiteResult]) -> SuiteResult:
         reasoning_effort_supported=all(s.reasoning_effort_supported for s in suites),
         retries_used=sum(s.retries_used for s in suites),
         seconds=sum(s.seconds for s in suites),
+        prompt_tokens=sum(s.prompt_tokens for s in suites),
+        completion_tokens=sum(s.completion_tokens for s in suites),
     )
 
 
@@ -321,6 +360,18 @@ def _suite_section(suite: SuiteResult, threshold: float) -> list[str]:
     )
     if suite.retries_used:
         lines.append(f"- Sağlayıcı yeniden denemesi: {suite.retries_used}")
+
+    if suite.prompt_tokens or suite.completion_tokens:
+        tokens = (
+            f"- Token: girdi {suite.prompt_tokens:,}, çıktı {suite.completion_tokens:,} "
+            "(sağlayıcının kendi sayımı)"
+        )
+        cost = cost_usd(suite)
+        if cost is None:
+            tokens += " — fiyat bilinmiyor, `config/llm_pricing.yaml`'da model yok"
+        else:
+            tokens += f" · **${cost:.4f}** ({PRICING.get('as_of')} fiyatlarıyla)"
+        lines.append(tokens)
 
     if scores.infra_error_ratio > INFRA_ERROR_WARNING_RATIO:
         lines += [
