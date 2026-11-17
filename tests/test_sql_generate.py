@@ -636,3 +636,31 @@ def test_a_per_minute_rate_limit_is_still_retried(monkeypatch) -> None:
     client._sleep = lambda _s: None
     assert client.complete("sys", "user") == "select 1"
     assert len(calls) == 2
+
+
+def test_player_metrics_examples_return_the_sample_too() -> None:
+    """An example outweighs a rule. The player_metrics examples used to return
+    percentile and comparison_group_size but not minutes_played, and both
+    models copied that: `rates` scored 6/6 correct and 2/6 on required
+    columns. Fixing the sentence without fixing the example changes little."""
+    examples = [sql for _, sql in generate.FEW_SHOT if "player_metrics" in sql]
+    assert examples, "no worked example of player_metrics"
+    for sql in examples:
+        assert "minutes_played" in sql, sql
+        assert "percentile" in sql, sql
+        assert "comparison_group_size" in sql, sql
+
+
+def test_system_prompt_does_not_let_player_metrics_override_the_sample_rule() -> None:
+    text = " ".join(generate.SYSTEM_PROMPT.lower().split())
+    assert "in addition to" in text
+
+
+def test_system_prompt_warns_that_desc_sorts_nulls_first() -> None:
+    """Postgres puts NULLs FIRST in a DESC sort, so a "highest" question
+    answers with valueless rows unless they are filtered. Measured as run-to-
+    run flake on rates-04: the same model added `is not null` on one run and
+    dropped it on the next."""
+    text = " ".join(generate.SYSTEM_PROMPT.lower().split())
+    assert "nulls first" in text
+    assert "is not null" in text

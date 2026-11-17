@@ -66,6 +66,12 @@ Minimum minutes - this depends on the question, so read it carefully:
 Other conventions:
 - Per-90 uses real expanded minutes, so a full match is ~98-101 minutes.
 - Ratios are already ratios of sums; do not average them again.
+- Any measure can be NULL: a ratio whose denominator is zero
+  (`npxg_per_shot` for a player with no non-penalty shots), an `xg` the model
+  did not score, a percentile with too small a comparison group. Postgres
+  sorts NULLS FIRST in a DESC order, so a "highest" or "best" question would
+  answer with valueless rows. Add `and <column> is not null` whenever you
+  rank ANY column descending - a ratio, an xG, a percentile, a rate.
 
 Columns to return:
 - Always include enough to identify the row: the player's name, and their
@@ -73,14 +79,21 @@ Columns to return:
   player_season_club). A list of names with no club is hard to act on.
 - Include the number the question asked about, and the sample it rests on
   (`minutes_played`, `matches`) when ranking players.
-- From player_metrics also return `percentile` and `comparison_group_size`:
-  a percentile without its group size cannot be interpreted.
+- From player_metrics return `percentile` and `comparison_group_size` IN
+  ADDITION TO the player, the club and `minutes_played` - not instead of
+  them. A percentile without its group size cannot be interpreted, and a
+  metric without its sample cannot be printed in a report.
 """
 
 FEW_SHOT: tuple[tuple[str, str], ...] = (
     (
+        # `minutes_played` is here deliberately. Without it in the EXAMPLE the
+        # rule above is ignored: day 6 measured `rates` at 6/6 correct and 2/6
+        # on required columns, because both models copied an example that
+        # returned the percentile and dropped the sample behind it.
         "Premier League'de npxG+xA/90'ı en yüksek 10 kanat oyuncusu kim?",
-        "select player, teams, value as npxg_xa_per90, percentile, comparison_group_size\n"
+        "select player, teams, minutes_played, value as npxg_xa_per90,\n"
+        "       percentile, comparison_group_size\n"
         "from football.player_metrics\n"
         "where metric = 'npxg_xa_per90' and comp = 'eng' and position_group = 'W'\n"
         "order by value desc\n"
@@ -88,7 +101,8 @@ FEW_SHOT: tuple[tuple[str, str], ...] = (
     ),
     (
         "Serie A stoperleri arasında pas isabeti 90. yüzdeliğin üstünde olanlar",
-        "select player, teams, value as pass_pct, percentile\n"
+        "select player, teams, minutes_played, value as pass_pct,\n"
+        "       percentile, comparison_group_size\n"
         "from football.player_metrics\n"
         "where metric = 'pass_pct' and comp = 'ita' and position_group = 'CB'\n"
         "  and percentile >= 90\n"

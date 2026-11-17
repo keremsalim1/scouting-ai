@@ -1,0 +1,322 @@
+{
+  "generated_at": "2026-11-17T19:53:23.507103+00:00",
+  "suites": [
+    {
+      "run_id": "20261117T195250Z-gemini-3.8-flash",
+      "model": "gemini/gemini-3.8-flash",
+      "started_at": "2026-11-17T19:52:50.556814+00:00",
+      "seconds": 32.95,
+      "temperature_supported": false,
+      "reasoning_effort_supported": true,
+      "retries_used": 0,
+      "quota_exhausted": false,
+      "budget_reached": false,
+      "prompt_tokens": 78580,
+      "completion_tokens": 740,
+      "cost_usd": 0.06171,
+      "scores": {
+        "scored": 11,
+        "total": 11,
+        "correct": 10,
+        "executes": 11,
+        "required_columns": 11,
+        "no_forbidden": 11,
+        "infra_errors": 0,
+        "reference_failures": 0,
+        "accuracy": 0.9090909090909091
+      },
+      "scores_by_category": {
+        "percentiles": {
+          "scored": 5,
+          "total": 5,
+          "correct": 5,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "rates": {
+          "scored": 6,
+          "total": 6,
+          "correct": 5,
+          "executes": 6,
+          "required_columns": 6,
+          "no_forbidden": 6,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.8333333333333334
+        }
+      },
+      "results": [
+        {
+          "id": "percentiles-01",
+          "category": "percentiles",
+          "question": "La Liga forvetleri arasında npxG/90 yüzdeliği en yüksek 8 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS npxg_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'npxg_per90' AND comp = 'esp' AND position_group = 'FW' ORDER BY percentile DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 10.145,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-02",
+          "category": "percentiles",
+          "question": "Serie A orta sahaları arasında kilit pas/90 yüzdeliği 80'in üstünde olanlar",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS key_passes_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'key_passes_per90' AND comp = 'ita' AND position_group = 'CM' AND percentile > 80 ORDER BY percentile DESC LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.907,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-03",
+          "category": "percentiles",
+          "question": "Premier League kalecileri arasında kurtarış/90 yüzdeliği en yüksek 5 kaleci",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS saves_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'saves_per90' AND comp = 'eng' AND position_group = 'GK' ORDER BY percentile DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.028,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-04",
+          "category": "percentiles",
+          "question": "La Liga stoperleri arasında kötü kontrol (miscontrols) metriğinde en iyi 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS miscontrols_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'miscontrols_per90' AND comp = 'esp' AND position_group = 'CB' ORDER BY percentile DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.468,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-05",
+          "category": "percentiles",
+          "question": "Serie A kanat oyuncuları arasında xA/90 yüzdeliği 75 ve üstü olanlar",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS xa_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'xa_per90' AND comp = 'ita' AND position_group = 'W' AND percentile >= 75 ORDER BY percentile DESC LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.299,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-01",
+          "category": "rates",
+          "question": "La Liga'da 90 dakikada en çok şut çeken 10 forvet",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, shots_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'esp' AND position_group = 'FW' AND minutes_played >= 900 ORDER BY shots_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.223,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-02",
+          "category": "rates",
+          "question": "Premier League'de pas isabeti en yüksek 10 stoper",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS pass_pct, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'pass_pct' AND comp = 'eng' AND position_group = 'CB' ORDER BY value DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 2.249,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-03",
+          "category": "rates",
+          "question": "Serie A'da 90 dakikada en çok hava topu kazanan 8 orta saha",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, aerials_won_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'ita' AND position_group = 'CM' AND minutes_played >= 900 ORDER BY aerials_won_per90 DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.32,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-04",
+          "category": "rates",
+          "question": "Which 10 Premier League players have the highest npxG per shot?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, npxg_per_shot, shots, minutes_played FROM football.player_per90 WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY npxg_per_shot DESC LIMIT 10",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 1, column 1: 'Joël Veltman' is not in the candidate row",
+          "seconds": 3.028,
+          "reference_rows": [
+            [
+              "Joël Veltman",
+              0.360592745244503
+            ],
+            [
+              "Tomás Soucek",
+              0.2796384235844016
+            ],
+            [
+              "Axel Disasi",
+              0.25859166868031025
+            ],
+            [
+              "Morato",
+              0.2542281962931156
+            ],
+            [
+              "Santiago Bueno",
+              0.24678540416061878
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "José Sá",
+              "Wolves",
+              null,
+              "0",
+              "2312"
+            ],
+            [
+              "Martin Dúbravka",
+              "Burnley",
+              null,
+              "0",
+              "3518"
+            ],
+            [
+              "Alisson Becker",
+              "Liverpool",
+              null,
+              "0",
+              "2639"
+            ],
+            [
+              "Emiliano Martínez",
+              "Aston Villa",
+              null,
+              "0",
+              "3165"
+            ],
+            [
+              "Adam Smith",
+              "Bournemouth",
+              null,
+              "0",
+              "1216"
+            ]
+          ]
+        },
+        {
+          "id": "rates-05",
+          "category": "rates",
+          "question": "La Liga'da 90 dakikada en çok ilerletici pas atan 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, progressive_passes_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'esp' AND minutes_played >= 900 ORDER BY progressive_passes_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.403,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-06",
+          "category": "rates",
+          "question": "Serie A'da dribling başarı yüzdesi en yüksek 8 kanat oyuncusu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS dribble_pct, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'dribble_pct' AND comp = 'ita' AND position_group = 'W' ORDER BY value DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 1.882,
+          "reference_rows": [],
+          "candidate_rows": []
+        }
+      ]
+    }
+  ]
+}

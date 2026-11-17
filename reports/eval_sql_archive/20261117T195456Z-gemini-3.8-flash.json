@@ -1,0 +1,113 @@
+{
+  "generated_at": "2026-11-17T19:55:11.777543+00:00",
+  "suites": [
+    {
+      "run_id": "20261117T195456Z-gemini-3.8-flash",
+      "model": "gemini/gemini-3.8-flash",
+      "started_at": "2026-11-17T19:54:56.498343+00:00",
+      "seconds": 15.279,
+      "temperature_supported": false,
+      "reasoning_effort_supported": true,
+      "retries_used": 0,
+      "quota_exhausted": false,
+      "budget_reached": false,
+      "prompt_tokens": 21658,
+      "completion_tokens": 206,
+      "cost_usd": 0.017016,
+      "scores": {
+        "scored": 3,
+        "total": 3,
+        "correct": 3,
+        "executes": 3,
+        "required_columns": 3,
+        "no_forbidden": 3,
+        "infra_errors": 0,
+        "reference_failures": 0,
+        "accuracy": 1.0
+      },
+      "scores_by_category": {
+        "rates": {
+          "scored": 2,
+          "total": 2,
+          "correct": 2,
+          "executes": 2,
+          "required_columns": 2,
+          "no_forbidden": 2,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "percentiles": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        }
+      },
+      "results": [
+        {
+          "id": "rates-04",
+          "category": "rates",
+          "question": "Which 10 Premier League players have the highest npxG per shot?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, npxg_per_shot, minutes_played, shots FROM football.player_per90 WHERE comp = 'eng' AND minutes_played >= 900 AND npxg_per_shot IS NOT NULL ORDER BY npxg_per_shot DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 10.572,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-02",
+          "category": "rates",
+          "question": "Premier League'de pas isabeti en yüksek 10 stoper",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS pass_pct, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'pass_pct' AND comp = 'eng' AND position_group = 'CB' ORDER BY value DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 2.548,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-04",
+          "category": "percentiles",
+          "question": "La Liga stoperleri arasında kötü kontrol (miscontrols) metriğinde en iyi 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, value AS miscontrols_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'miscontrols_per90' AND comp = 'esp' AND position_group = 'CB' ORDER BY percentile DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.159,
+          "reference_rows": [],
+          "candidate_rows": []
+        }
+      ]
+    }
+  ]
+}

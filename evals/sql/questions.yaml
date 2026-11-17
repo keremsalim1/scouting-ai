@@ -229,15 +229,18 @@
     limit 5
 
 - id: percentiles-04
-  question: "La Liga stoperleri arasında top kaybı metriğinde en iyi 10 oyuncu"
+  question: "La Liga stoperleri arasında kötü kontrol (miscontrols) metriğinde en iyi 10 oyuncu"
   category: percentiles
   order_sensitive: true
   required_columns: [player, teams, percentile, comparison_group_size]
   forbidden: [minutes_filter]
   notes: >
-    Tuzak: miscontrols_per90 için higher_is_better false. Yüzdelik veri
-    katmanında çevrilmiş, yani "en iyi" = percentile desc. Ham değere göre
-    sıralamak (value asc) de aynı sırayı verebilir ama yüzdelik doğru yoldur.
+    Ters yönlü metrik: miscontrols_per90 için higher_is_better false, yüzdelik
+    veri katmanında çevrilmiş, yani "en iyi" = percentile desc. Soru ilk
+    halinde "top kaybı" diyordu ve metrics.yaml'da iki metrik de bu anlama
+    geliyor ("Kötü kontrol" = miscontrols, "Top kaptırma" = dispossessed);
+    model dispossessed_per90 seçti ve haklıydı. Soru artık metriğin kendi
+    etiketini kullanıyor, böylece ters yönlü metrik tuzağı gerçekten sınanıyor.
   reference_sql: |
     select player, percentile
     from football.player_metrics
