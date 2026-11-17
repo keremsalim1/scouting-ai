@@ -13,14 +13,52 @@ the first line of defence and the role is the one that holds (D-013).
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import json
 import sys
 import time
+from pathlib import Path
 
 import psycopg
 
 from football_ai.console import force_utf8
-from football_ai.data.db import connect, etl_dsn, readonly_dsn
+from football_ai.data.db import REPO_ROOT, connect, etl_dsn, readonly_dsn
 from football_ai.sql_agent import generate, guard
+
+# Real questions accumulate here. The gold set grows from this file rather
+# than from one person's imagination: the first full benchmark run scored 0%
+# on match_detail, a category nobody had predicted would be the weak one.
+# Git-ignored - it is a local record of local use, not a repo artefact.
+ASK_LOG = REPO_ROOT / "reports" / "ask_log.jsonl"
+
+
+def log_question(
+    path: Path,
+    *,
+    question: str,
+    sql: str | None,
+    ok: bool,
+    rows: int | None,
+) -> None:
+    """Append one question to the log. Never raises.
+
+    Bookkeeping must not break the thing the user asked for, so every failure
+    here is swallowed: a full disk or a path that is somehow a directory costs
+    a log line, not the answer.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "asked_at": dt.datetime.now(dt.UTC).isoformat(),
+            "question": question,
+            "sql": sql,
+            "ok": ok,
+            "rows": rows,
+        }
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def _print_table(columns: list[str], rows: list[tuple], limit: int = 25) -> None:
@@ -198,6 +236,18 @@ def main(argv: list[str] | None = None) -> int:
         if attempt.refusal:
             print(f"attempt {i} refused: {attempt.refusal}")
             print(f"  {attempt.sql}\n")
+
+    # Every real question is a candidate gold-set question, and one the
+    # developer actually wanted an answer to - which is signal no invented
+    # question carries. Logged before the early return so failures are kept
+    # too: those are the most interesting candidates.
+    log_question(
+        ASK_LOG,
+        question=question,
+        sql=result.sql,
+        ok=result.ok,
+        rows=len(rows) if rows is not None else None,
+    )
 
     if not result.ok:
         print(f"FAILED: {result.error}", file=sys.stderr)

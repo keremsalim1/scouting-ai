@@ -135,6 +135,40 @@ FEW_SHOT: tuple[tuple[str, str], ...] = (
 _FENCE = re.compile(r"```(?:sql)?\s*(.*?)\s*```", re.DOTALL | re.IGNORECASE)
 
 
+class QuotaExhausted(RuntimeError):
+    """The daily request allowance is gone; nothing in this run can succeed.
+
+    Separate from a transient rate limit on purpose. A per-minute 429 clears in
+    seconds and retrying is right. A per-DAY 429 says "retry in 13h20m", and
+    every retry is another request counted against an allowance that already
+    ran out - so retrying both wastes the remaining calls and delays the one
+    message the caller needs to read. Day 6's first batched run lost all 16
+    questions this way: five burned the 20-request allowance on timeout
+    retries, and the remaining eleven hammered a 429 that had already said it
+    needed half a day.
+    """
+
+
+_DAILY_QUOTA_MARKERS = (
+    "per day limit",
+    "perday",
+    "requests per day",
+    "generaterequestsperday",
+)
+
+
+def _is_daily_quota(exc: Exception) -> bool:
+    """Is this a daily allowance error rather than a per-minute one?"""
+    text = str(exc).lower()
+    if "429" not in text and "ratelimit" not in text and "quota" not in text:
+        return False
+    if any(marker in text for marker in _DAILY_QUOTA_MARKERS):
+        return True
+    # "Please retry in 13h20m49s" - an hours-long wait is a daily window by
+    # any other name, whatever the provider calls the metric.
+    return bool(re.search(r"retry in \d+h", text))
+
+
 def _is_transient(exc: Exception) -> bool:
     """Is this worth retrying, or is retrying just a slower failure?
 
@@ -234,6 +268,25 @@ class LiteLLMClient:
         # cannot distinguish "one slow answer" from "three fast refusals and
         # a retry", and those two call for opposite fixes.
         self.call_log: list[tuple[float, str]] = []
+        # Tokens the provider says it billed, accumulated over every call this
+        # client makes. Measured rather than estimated from character counts,
+        # so a run can price itself and a decision about paying for a higher
+        # quota rests on a number instead of a guess.
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+
+    def _record_usage(self, response: object) -> None:
+        """Add this call's billed tokens, if the provider reported any.
+
+        Written defensively: `usage` is absent on some providers and on
+        streamed responses, and a missing field must not turn a working run
+        into a crash over bookkeeping.
+        """
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        self.prompt_tokens += int(getattr(usage, "prompt_tokens", 0) or 0)
+        self.completion_tokens += int(getattr(usage, "completion_tokens", 0) or 0)
 
     def _optional_params(self) -> dict[str, object]:
         """The parameters this provider has not yet rejected."""
@@ -305,6 +358,11 @@ class LiteLLMClient:
                 if rejected is not None:
                     self._disable(rejected)
                     continue
+                # Checked before the transient branch: a daily 429 matches the
+                # transient markers ("429", "rate limit") but retrying it
+                # spends calls from an allowance that is already gone.
+                if _is_daily_quota(exc):
+                    raise QuotaExhausted(str(exc)) from exc
                 if attempts_left > 0 and _is_transient(exc):
                     attempts_left -= 1
                     self.retries_used += 1
@@ -313,6 +371,7 @@ class LiteLLMClient:
                     continue
                 raise
             self.call_log.append((time.perf_counter() - started, "ok"))
+            self._record_usage(response)
             return response.choices[0].message.content or ""
 
 
@@ -397,6 +456,11 @@ def text_to_sql(
     for _ in range(max_repairs + 1):
         try:
             raw = client.complete(SYSTEM_PROMPT, prompt)
+        except QuotaExhausted:
+            # Deliberately not turned into a result: every later question
+            # would fail the same way, so the caller has to be able to stop
+            # the whole run rather than record N identical failures.
+            raise
         except Exception as exc:
             result.error = f"the model call failed: {type(exc).__name__}: {exc}"
             return result

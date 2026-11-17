@@ -1,0 +1,590 @@
+# Text-to-SQL benchmark gold set - 40 questions, 2025/26, eng/esp/ita.
+#
+# Rules that keep this file honest:
+#  * Every reference_sql was run by hand against the loaded database and its
+#    output read before it landed here. None of it was written by an LLM: a
+#    reference the model agreed with would measure agreement, not correctness.
+#  * No question here appears in generate.FEW_SHOT. Benchmarking the examples
+#    the model was shown measures its memory.
+#  * `order_sensitive: true` requires the ORDER BY column in the SELECT list,
+#    and a LIMIT that does not land on a tie. Both are enforced by
+#    scripts/eval_sql_gold.py.
+#  * `notes` says what the question is a trap for. That text becomes the error
+#    analysis in the README.
+#
+# Categories: totals, rates, percentiles, transfers, teams, match_detail,
+# filters, unanswerable. See docs/superpowers/specs/2026-11-16-day6-sql-eval-design.md
+
+# ---------------------------------------------------------------------------
+# totals - season totals. A minutes filter here is WRONG: the total already
+# accounts for playing time, and filtering hides the player who produced a lot
+# in few minutes, which is exactly the player a scout wants to see.
+# ---------------------------------------------------------------------------
+
+- id: totals-01
+  question: "Serie A'da en çok gol atan 7 oyuncu kim?"
+  category: totals
+  order_sensitive: true
+  required_columns: [player, teams]
+  forbidden: [minutes_filter]
+  notes: "Toplam sorusu: dakika filtresi olmamalı."
+  reference_sql: |
+    select player, goals
+    from football.player_season
+    where comp = 'ita'
+    order by goals desc
+    limit 7
+
+- id: totals-02
+  question: "La Liga'da en çok sarı kart gören 7 oyuncu"
+  category: totals
+  order_sensitive: true
+  required_columns: [player, teams]
+  forbidden: [minutes_filter]
+  notes: >
+    Toplam sorusu. Disiplin metrikleri de toplamdır. Limit 7 seçildi: 11
+    kartlılar 7. sırada bitiyor, 6 olsa eşitlik sınırına düşerdi.
+  reference_sql: |
+    select player, yellow_cards
+    from football.player_season
+    where comp = 'esp'
+    order by yellow_cards desc
+    limit 7
+
+- id: totals-03
+  question: "Premier League'de sezon boyunca en çok kilit pas atan 8 oyuncu"
+  category: totals
+  order_sensitive: true
+  required_columns: [player, teams]
+  forbidden: [minutes_filter]
+  notes: "\"Sezon boyunca\" toplam demek; per-90 ile karıştırılması tipik hata."
+  reference_sql: |
+    select player, key_passes
+    from football.player_season
+    where comp = 'eng'
+    order by key_passes desc
+    limit 8
+
+- id: totals-04
+  question: "Serie A'da en fazla top kazanımı yapan 5 oyuncu"
+  category: totals
+  order_sensitive: true
+  required_columns: [player, teams]
+  forbidden: [minutes_filter]
+  notes: "ball_recoveries kolonu. Toplam sorusu."
+  reference_sql: |
+    select player, ball_recoveries
+    from football.player_season
+    where comp = 'ita'
+    order by ball_recoveries desc
+    limit 5
+
+- id: totals-05
+  question: "Premier League'de en çok dakika oynayan 10 oyuncu"
+  category: totals
+  order_sensitive: true
+  required_columns: [player, teams]
+  forbidden: [minutes_filter]
+  notes: "Dakikanın kendisi sorulduğunda dakika filtresi eklemek döngüsel olur."
+  reference_sql: |
+    select player, minutes_played
+    from football.player_season
+    where comp = 'eng'
+    order by minutes_played desc
+    limit 10
+
+# ---------------------------------------------------------------------------
+# rates - per-90 and percentage questions. Here the 900-minute threshold IS
+# required: without it a 40-minute cameo tops every table.
+# ---------------------------------------------------------------------------
+
+- id: rates-01
+  question: "La Liga'da 90 dakikada en çok şut çeken 10 forvet"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: "Oran sorusu: 900 dakika eşiği olmadan az oynayan biri listeyi domine eder."
+  reference_sql: |
+    select player, shots_per90
+    from football.player_per90
+    where comp = 'esp' and position_group = 'FW' and minutes_played >= 900
+    order by shots_per90 desc
+    limit 10
+
+- id: rates-02
+  question: "Premier League'de pas isabeti en yüksek 10 stoper"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: "Yüzde sorusu. Oran toplamların oranıdır, maç yüzdelerinin ortalaması değil."
+  reference_sql: |
+    select player, pass_pct
+    from football.player_per90
+    where comp = 'eng' and position_group = 'CB' and minutes_played >= 900
+    order by pass_pct desc
+    limit 10
+
+- id: rates-03
+  question: "Serie A'da 90 dakikada en çok hava topu kazanan 8 orta saha"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: "position_group = 'CM'. Oran sorusu, eşik gerekli."
+  reference_sql: |
+    select player, aerials_won_per90
+    from football.player_per90
+    where comp = 'ita' and position_group = 'CM' and minutes_played >= 900
+    order by aerials_won_per90 desc
+    limit 8
+
+- id: rates-04
+  question: "Which 10 Premier League players have the highest npxG per shot?"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: >
+    İngilizce soru (dil duyarlılığı). Oran: Σ npxg / Σ (shots − penalties_taken).
+    Tuzak: payda 0 olan 23 oyuncuda değer NULL ve Postgres `desc` sıralamada
+    NULL'ları BAŞA koyuyor. "En yüksek" sorusu NULL döndüremez, yani filtre
+    zorunlu.
+  reference_sql: |
+    select player, npxg_per_shot
+    from football.player_per90
+    where comp = 'eng' and minutes_played >= 900 and npxg_per_shot is not null
+    order by npxg_per_shot desc
+    limit 10
+
+- id: rates-05
+  question: "La Liga'da 90 dakikada en çok ilerletici pas atan 10 oyuncu"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: "Oran sorusu. progressive_passes_per90 kolonu hazır, elle hesaplanmamalı."
+  reference_sql: |
+    select player, progressive_passes_per90
+    from football.player_per90
+    where comp = 'esp' and minutes_played >= 900
+    order by progressive_passes_per90 desc
+    limit 10
+
+- id: rates-06
+  question: "Serie A'da dribling başarı yüzdesi en yüksek 8 kanat oyuncusu"
+  category: rates
+  order_sensitive: true
+  required_columns: [player, teams, minutes_played]
+  notes: "Havuz küçük (10 oyuncu 900+ dk), limit 8 eşitlik sınırının altında."
+  reference_sql: |
+    select player, dribble_pct
+    from football.player_per90
+    where comp = 'ita' and position_group = 'W' and minutes_played >= 900
+    order by dribble_pct desc
+    limit 8
+
+# ---------------------------------------------------------------------------
+# percentiles - player_metrics. The threshold is already applied there, and
+# percentile is oriented so 100 is best. A percentile without its comparison
+# group size cannot be interpreted, so both are required columns.
+# ---------------------------------------------------------------------------
+
+- id: percentiles-01
+  question: "La Liga forvetleri arasında npxG/90 yüzdeliği en yüksek 8 oyuncu"
+  category: percentiles
+  order_sensitive: true
+  required_columns: [player, teams, percentile, comparison_group_size]
+  forbidden: [minutes_filter]
+  notes: "player_metrics eşiği kendi uygular; ek dakika filtresi yanlış."
+  reference_sql: |
+    select player, percentile
+    from football.player_metrics
+    where metric = 'npxg_per90' and comp = 'esp' and position_group = 'FW'
+    order by percentile desc
+    limit 8
+
+- id: percentiles-02
+  question: "Serie A orta sahaları arasında kilit pas/90 yüzdeliği 80'in üstünde olanlar"
+  category: percentiles
+  order_sensitive: false
+  required_columns: [player, teams, percentile, comparison_group_size]
+  forbidden: [minutes_filter]
+  notes: "Yüzdelik filtresi. 100 her zaman grubun en iyisi."
+  reference_sql: |
+    select player, percentile
+    from football.player_metrics
+    where metric = 'key_passes_per90' and comp = 'ita' and position_group = 'CM'
+      and percentile > 80
+    order by percentile desc
+
+- id: percentiles-03
+  question: "Premier League kalecileri arasında kurtarış/90 yüzdeliği en yüksek 5 kaleci"
+  category: percentiles
+  order_sensitive: true
+  required_columns: [player, teams, percentile, comparison_group_size]
+  forbidden: [minutes_filter]
+  notes: "position_group = 'GK'. Kaleci metriği yalnız kalecilerde anlamlı."
+  reference_sql: |
+    select player, percentile
+    from football.player_metrics
+    where metric = 'saves_per90' and comp = 'eng' and position_group = 'GK'
+    order by percentile desc
+    limit 5
+
+- id: percentiles-04
+  question: "La Liga stoperleri arasında top kaybı metriğinde en iyi 10 oyuncu"
+  category: percentiles
+  order_sensitive: true
+  required_columns: [player, teams, percentile, comparison_group_size]
+  forbidden: [minutes_filter]
+  notes: >
+    Tuzak: miscontrols_per90 için higher_is_better false. Yüzdelik veri
+    katmanında çevrilmiş, yani "en iyi" = percentile desc. Ham değere göre
+    sıralamak (value asc) de aynı sırayı verebilir ama yüzdelik doğru yoldur.
+  reference_sql: |
+    select player, percentile
+    from football.player_metrics
+    where metric = 'miscontrols_per90' and comp = 'esp' and position_group = 'CB'
+    order by percentile desc
+    limit 10
+
+- id: percentiles-05
+  question: "Serie A kanat oyuncuları arasında xA/90 yüzdeliği 75 ve üstü olanlar"
+  category: percentiles
+  order_sensitive: false
+  required_columns: [player, teams, percentile, comparison_group_size]
+  forbidden: [minutes_filter]
+  notes: "Dahil edici sınır (>=), 75'in kendisi listeye girer."
+  reference_sql: |
+    select player, percentile
+    from football.player_metrics
+    where metric = 'xa_per90' and comp = 'ita' and position_group = 'W'
+      and percentile >= 75
+    order by percentile desc
+
+# ---------------------------------------------------------------------------
+# transfers - the 48 players with two rows. player_season combines clubs;
+# player_season_club splits them. Picking the wrong one double-counts
+# silently, which is the worst kind of wrong.
+# ---------------------------------------------------------------------------
+
+- id: transfers-01
+  question: "Sezon içinde kulüp değiştiren oyuncular arasında toplam golü en yüksek 10 oyuncu"
+  category: transfers
+  order_sensitive: true
+  required_columns: [player, clubs]
+  forbidden: [player_season_club]
+  notes: >
+    "Toplam" birleşik demek, yani player_season. player_season_club
+    kullanmak oyuncuyu iki kez sayar ve toplamı böler.
+  reference_sql: |
+    select player, goals
+    from football.player_season
+    where clubs > 1
+    order by goals desc
+    limit 10
+
+- id: transfers-02
+  question: "Kulüp değiştiren oyuncuların her kulüpteki dakikaları nedir?"
+  category: transfers
+  order_sensitive: false
+  required_columns: [player, team]
+  forbidden: [player_season]
+  notes: >
+    Tersi: "her kulüpteki" ayrıştırma istiyor, yani player_season_club.
+    Birleşik view bu soruyu cevaplayamaz.
+  reference_sql: |
+    select player, team, minutes_played
+    from football.player_season_club
+    where player_id in (
+      select player_id
+      from football.player_season_club
+      group by player_id
+      having count(*) > 1
+    )
+    order by player, minutes_played desc
+
+- id: transfers-03
+  question: "Premier League'de sezon içinde birden fazla kulüpte oynayan kaç oyuncu var?"
+  category: transfers
+  order_sensitive: false
+  forbidden: [player_season_club]
+  notes: >
+    Sayım sorusu. player_season_club üzerinden saymak her oyuncuyu kulüp
+    sayısı kadar sayar; distinct olmadan sonuç iki katına çıkar.
+  reference_sql: |
+    select count(*) as oyuncu_sayisi
+    from football.player_season
+    where comp = 'eng' and clubs > 1
+
+- id: transfers-04
+  question: "Kulüp değiştirenler arasında toplam asisti en yüksek 5 oyuncu"
+  category: transfers
+  order_sensitive: true
+  required_columns: [player, clubs]
+  forbidden: [player_season_club]
+  notes: "Birleşik toplam. clubs > 1 filtresi player_season'da hazır."
+  reference_sql: |
+    select player, assists
+    from football.player_season
+    where clubs > 1
+    order by assists desc
+    limit 5
+
+- id: transfers-05
+  question: "Sezon içinde iki farklı ligde oynayan oyuncular kimler?"
+  category: transfers
+  order_sensitive: false
+  required_columns: [player]
+  notes: >
+    player_season ligde-sezon bazında, yani lig değiştiren oyuncunun iki
+    satırı var. 24 oyuncu. count(distinct comp) > 1 gerekiyor.
+  reference_sql: |
+    select player, count(distinct comp) as lig_sayisi
+    from football.player_season
+    group by player_id, player
+    having count(distinct comp) > 1
+    order by player
+
+# ---------------------------------------------------------------------------
+# teams - aggregation above the player grain. player_season_club is the right
+# source here: it carries the club, and summing it over a league counts every
+# player-club stint exactly once.
+# ---------------------------------------------------------------------------
+
+- id: teams-01
+  question: "Premier League'de en çok şut çeken 5 takım"
+  category: teams
+  order_sensitive: true
+  required_columns: [team]
+  notes: "Takım düzeyinde toplama. player_season_club group by team."
+  reference_sql: |
+    select team, sum(shots) as shots
+    from football.player_season_club
+    where comp = 'eng'
+    group by team
+    order by shots desc
+    limit 5
+
+- id: teams-02
+  question: "What is the total xG of each Serie A team?"
+  category: teams
+  order_sensitive: false
+  required_columns: [team]
+  notes: "İngilizce soru. 20 takım, tamamı dönmeli."
+  reference_sql: |
+    select team, sum(xg) as xg
+    from football.player_season_club
+    where comp = 'ita'
+    group by team
+    order by xg desc
+
+- id: teams-03
+  question: "Premier League'de en çok sarı kart gören 5 takım"
+  category: teams
+  order_sensitive: true
+  required_columns: [team]
+  notes: "Takım düzeyi disiplin toplamı."
+  reference_sql: |
+    select team, sum(yellow_cards) as yellow_cards
+    from football.player_season_club
+    where comp = 'eng'
+    group by team
+    order by yellow_cards desc
+    limit 5
+
+- id: teams-04
+  question: "La Liga'da en çok penaltı kullanan 4 takım"
+  category: teams
+  order_sensitive: true
+  required_columns: [team]
+  notes: >
+    penalties_taken, penalty_goals değil: kullanılan penaltı sorulmuş.
+    Limit 4 seçildi: 5. ve 6. takım 8'de eşit.
+  reference_sql: |
+    select team, sum(penalties_taken) as penalties_taken
+    from football.player_season_club
+    where comp = 'esp'
+    group by team
+    order by penalties_taken desc
+    limit 4
+
+- id: teams-05
+  question: "Serie A'da takım başına toplam asist, en yüksek 5 takım"
+  category: teams
+  order_sensitive: true
+  required_columns: [team]
+  notes: "Takım düzeyinde asist toplamı."
+  reference_sql: |
+    select team, sum(assists) as assists
+    from football.player_season_club
+    where comp = 'ita'
+    group by team
+    order by assists desc
+    limit 5
+
+# ---------------------------------------------------------------------------
+# match_detail - below the season grain: matches, shots, passes.
+# ---------------------------------------------------------------------------
+
+- id: match_detail-01
+  question: "Premier League'de en çok gol atılan 5 maç hangileri?"
+  category: match_detail
+  order_sensitive: true
+  required_columns: [home_team, away_team]
+  notes: >
+    matches tablosu, home_score + away_score toplamı. İki maç aynı gün 7 gollü
+    olduğu için sıralama date'ten sonra home_team ile de ayrılıyor; tek
+    başına gol toplamı 5. sırada eşitliğe düşüyor.
+  reference_sql: |
+    select date, home_team, away_team, home_score + away_score as total_goals
+    from football.matches
+    where comp = 'eng'
+    order by total_goals desc, date, home_team
+    limit 5
+
+- id: match_detail-02
+  question: "Which 5 La Liga matches had the highest attendance?"
+  category: match_detail
+  order_sensitive: true
+  required_columns: [home_team, away_team]
+  notes: "İngilizce soru. attendance 1140 maçta dolu."
+  reference_sql: |
+    select date, home_team, away_team, attendance
+    from football.matches
+    where comp = 'esp'
+    order by attendance desc
+    limit 5
+
+- id: match_detail-03
+  question: "Serie A'da en çok şut çekilen 5 maç"
+  category: match_detail
+  order_sensitive: true
+  required_columns: [home_team, away_team]
+  notes: "matches.n_shots hazır kolon; shots tablosunu saymak da aynı sonucu verir."
+  reference_sql: |
+    select date, home_team, away_team, n_shots
+    from football.matches
+    where comp = 'ita'
+    order by n_shots desc, date
+    limit 5
+
+- id: match_detail-04
+  question: "Premier League'de xG'si en yüksek 10 şut kime ait?"
+  category: match_detail
+  order_sensitive: true
+  required_columns: [player]
+  notes: >
+    shots tablosu, players ile join. 9543 şutun 55'inde xg NULL ve `desc`
+    sıralamada NULL'lar başa geliyor, bu yüzden filtre gerekli.
+  reference_sql: |
+    select p.player, s.xg
+    from football.shots s
+    join football.players p on p.player_id = s.player_id
+    where s.comp = 'eng' and s.xg is not null
+    order by s.xg desc
+    limit 10
+
+- id: match_detail-05
+  question: "En uzun 10 tamamlanmış pas kime ait?"
+  category: match_detail
+  order_sensitive: true
+  required_columns: [player]
+  notes: "passes tablosu, is_completed türetilmiş boolean."
+  reference_sql: |
+    select pl.player, ps.pass_length
+    from football.passes ps
+    join football.players pl on pl.player_id = ps.player_id
+    where ps.is_completed
+    order by ps.pass_length desc
+    limit 10
+
+# ---------------------------------------------------------------------------
+# filters - literal values. `comp = 'Premier League'` returns an empty result
+# with no error, which is worse than a failure: it looks like an answer.
+# ---------------------------------------------------------------------------
+
+- id: filters-01
+  question: "Premier League'de kaç oyuncu var?"
+  category: filters
+  order_sensitive: false
+  notes: "comp = 'eng', 'Premier League' değil. Sessiz boş sonuç tuzağı."
+  reference_sql: |
+    select count(*) as oyuncu_sayisi
+    from football.player_season
+    where comp = 'eng'
+
+- id: filters-02
+  question: "Serie A'da stoper olarak sınıflanan kaç oyuncu var?"
+  category: filters
+  order_sensitive: false
+  notes: "position_group = 'CB' ve comp = 'ita'. İki literal birlikte."
+  reference_sql: |
+    select count(*) as stoper_sayisi
+    from football.player_season
+    where comp = 'ita' and position_group = 'CB'
+
+- id: filters-03
+  question: "2025/26 sezonunda La Liga'da kaç maç oynandı?"
+  category: filters
+  order_sensitive: false
+  notes: "Sezon veride '2526' olarak saklanıyor, '2025/26' değil."
+  reference_sql: |
+    select count(*) as mac_sayisi
+    from football.matches
+    where comp = 'esp' and season = '2526'
+
+- id: filters-04
+  question: "Lig bazında, pozisyonu başlangıç dizilişlerinden belirlenmiş kaç kanat beki var?"
+  category: filters
+  order_sensitive: true
+  required_columns: [comp]
+  notes: >
+    position_group = 'FB' (DML/DMR da buraya düşer, DM'ye değil) ve
+    position_source = 'starts'.
+  reference_sql: |
+    select comp, count(*) as fb_sayisi
+    from football.player_season
+    where position_group = 'FB' and position_source = 'starts'
+    group by comp
+    order by comp
+
+- id: filters-05
+  question: "Premier League'de geniş pozisyon grubu hücum olan kaç oyuncu var?"
+  category: filters
+  order_sensitive: false
+  notes: "position_group_broad = 'ATT', dört değerli geniş havuz."
+  reference_sql: |
+    select count(*) as hucum_oyuncu_sayisi
+    from football.player_season
+    where comp = 'eng' and position_group_broad = 'ATT'
+
+# ---------------------------------------------------------------------------
+# unanswerable - the data does not hold these. There is no reference result
+# set, so only `executes` and `no_forbidden` are scored: what is being caught
+# is an invented column, which the guard lets through and Postgres rejects.
+# These four are excluded from the accuracy denominator.
+# ---------------------------------------------------------------------------
+
+- id: unanswerable-01
+  question: "Premier League'de 90 dakikada en çok pres yapan 10 oyuncu kim?"
+  category: unanswerable
+  order_sensitive: false
+  notes: "OpenPlay'de pres (pressure) olayı yok. Uydurulmuş kolon beklenir."
+
+- id: unanswerable-02
+  question: "En çok ilerletici taşıma yapan 10 oyuncu"
+  category: unanswerable
+  order_sensitive: false
+  notes: >
+    İlerletici taşıma (progressive carry) verisi yok. progressive_passes
+    farklı bir şey; onu döndürmek de kabul edilebilir ama uydurma kolon değil.
+
+- id: unanswerable-03
+  question: "2026/27 sezonunda en çok gol atan oyuncu kim?"
+  category: unanswerable
+  order_sensitive: false
+  notes: "Veride yalnız '2526' var. Boş sonuç doğru davranış, hata değil."
+
+- id: unanswerable-04
+  question: "Oyuncuların maç başına koştuğu mesafe kaç kilometre?"
+  category: unanswerable
+  order_sensitive: false
+  notes: "Takip (tracking) verisi yok. Koşu mesafesi hiçbir tabloda tutulmuyor."

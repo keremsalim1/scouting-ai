@@ -764,3 +764,109 @@ WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY assists DESC LIMIT 5
 **Gün 6'ya etkisi.** "Execution accuracy" tek başına yetersiz — iki sorgu da çalışıyordu. Benchmark dört boyut ölçecek: çalışıyor mu, sonuç kümesi referansla aynı mı, zorunlu kolonlar var mı, yasaklı yapı yok mu. Dördüncüsü kritik: bazı hatalar **doğru sonuç verir ama yanlış sebeple** — bu soruda dakika filtresi cevabı değiştirmedi (ilk beş zaten 900+ oynamıştı), başka bir soruda değiştirirdi.
 
 **Tarih.** 2026-11-15
+
+---
+
+## D-026: Hakem sonuç kümesidir; doğruluk dört boyutta ölçülür
+
+**Bağlam.** Gün 5 güvenliği ölçtü, doğruluğu ölçmedi. "Çalışıyor" demek birkaç soruyu elle deneyip makul görmekten ibaretti. Benchmark kurmak için önce "doğru" kelimesinin tanımı gerekiyordu.
+
+**Karar.**
+- **Hakem sonuç kümesi eşitliğidir, SQL metni değil.** Model referanstan tamamen farklı yazıp aynı satırları döndürdüyse cevap doğrudur. SQL metnini karşılaştırmak prompt'u değil benim yazım tarzımı ölçer.
+- Kolonlar **sıraya göre**, isme göre değil (model `value`'yu `npxg_per90` diye adlandırabilir). Referansın kolonları bir **önek** olarak bulunmak zorunda; **fazlası hata değil** — prompt zaten "kulübü ve örneklemi de döndür" diyor, fazlalığı cezalandırmak talimatı cezalandırmak olur.
+- Sayılar **bağıl toleransla** (`1e-6`, 1'de tabanlanmış): psycopg `numeric`'i `Decimal`, `double precision`'ı `float` veriyor, aynı per-90 değeri hangi view'dan geldiğine göre iki farklı tip olarak dönüyor. Aralarında `==` son bite oynanan bir kumardır.
+- `bool` sayısal yoldan **ayrı tutulur**: Python'da `True == 1`, yani boolean bir kolon bir sayımla sessizce eşleşirdi.
+- Satırlar yalnız **soru sıraya duyarlı değilse** sıralanır, ve çoklu küme olarak (kopyalar korunur). Sıralama anahtarı NULL'ları ve karışık tipleri ayrı sıralara koyar — oran metriklerimiz payda 0'da NULL döndürüyor ve NULL'u bir dizeyle karşılaştırmak `TypeError` fırlatır, yani koşu 23. soruda ölürdü.
+
+**Dört boyut.** Sonuç eşitliği tek başına "doğru sayıyı yanlış mantıkla üretmeyi" kaçırıyor (D-025'teki dakika filtresi tam olarak böyleydi). Her soru ayrı ayrı puanlanır:
+
+| Boyut | Sorduğu | Yakaladığı |
+| --- | --- | --- |
+| `executes` | guard'dan ve veritabanından geçti mi | uydurulmuş kolon |
+| `correct` | sonuç kümesi referansla aynı mı | asıl doğruluk (eşik buna) |
+| `required_columns` | çıktı kullanılabilir mi | grup büyüklüğü olmayan yüzdelik |
+| `no_forbidden` | doğru yoldan mı geldi | toplam sorusunda 900 dakika filtresi |
+
+**Alternatifler.** (a) Yalnız execution accuracy — Gün 5'te iki sorgu da çalışıyordu, biri yanlıştı; ölçüm kör. (b) SQL dizesi karşılaştırma — reddedildi, yukarıda. (c) LLM-as-judge — ölçmek istediğimiz şeyi ölçen aracı aynı aileden bir modele bırakmak; ayrıca deterministik değil.
+
+**Sonuç/ölçüm.** 40 soru, 8 kategori, 36 referans sorgu (4 `unanswerable` kategorisinde referans yok). Gold set'in kendi doğrulaması (`make eval-sql-gold`) ilk koşusunda **kendi yazdığım gold set'te 5 hata buldu:** bir referans yasakladığı view'ı alt sorguda kullanıyordu, ikisi eşitlik sınırında kesiyordu (iki farklı cevap da doğru, karşılaştırıcı ayırt edemez), ikisi `desc` sıralamada NULL'ları "en yüksek" sanıyordu — Postgres `desc`'te NULL'ları başa koyuyor.
+
+**Tarih.** 2026-11-16
+
+---
+
+## D-027: CI deterministik kalır; LLM eval yerelde koşar
+
+**Bağlam.** Gün 6'nın iki müşterisi var: teşhis (hangi soru tipini yanlış anlıyor) ve regresyon koruması (prompt değişikliği dünü bozdu mu). İkincisi CI'a bakar, ama 40 soruluk bir LLM koşusunu her PR'da koşturmak API anahtarı, para ve 503 riski demek.
+
+**Karar.** GitHub Actions'ta **LLM çağrısı yok**. Üç iş: `lint`, `test` (birim testler; `addopts` zaten `data` ve `db` işaretlilerini dışlıyor), `gold`.
+
+`gold` işi pgvector servisi başlatır, **migration'ları uygular, ETL çalıştırmaz**, sonra 40 referans SQL'i guard'dan geçirip `EXPLAIN` ile doğrular.
+
+**Can alıcı nokta:** `EXPLAIN` veri olmadan çalışır ama şemaya karşı **tam** doğrulama yapar. Olmayan kolon, silinmiş view, parse edilemez hale gelmiş referans — hepsi yakalanır. Bu tam olarak sessizce "daha düşük doğruluk oranı"na dönüşen hata sınıfıdır.
+
+**Alternatifler.** (a) CI'da release'ten OpenPlay indirip ETL koşmak: birkaç dakika ve bir ağ bağımlılığı ekliyor, karşılığında yalnız "sayılar hâlâ aynı mı" sorusunu cevaplıyor — onu yerel koşu zaten cevaplıyor. (b) Katalog anlık görüntüsünü commit'leyip ona karşı doğrulamak: anlık görüntünün kendisi sürüklenir. (c) CI'da LLM: sağlayıcı 503'ü PR'ı kırmızı yapar, sinyal kullanılamaz hale gelir.
+
+**Sonuç/ölçüm.** Yerelde atılabilir boş bir veritabanıyla doğrulandı (yalnız migration, ETL yok): şema kontrolleri **36/36** geçti. Sonra bir referanstaki kolon adı bozuldu ve iş **`totals-01`'i adıyla söyleyerek başarısız oldu** — yani sürüklenme gerçekten yakalanıyor. Probe veritabanı silindi.
+
+**Tarih.** 2026-11-16
+
+---
+
+## D-028: Eşik güçlü modele uygulanır; zayıf model teşhis aletidir
+
+**Bağlam.** Plandaki kabul kriteri "execution accuracy ≥ %70". İki model koşuyorsa eşik hangisine uygulanır?
+
+**Karar.** Eşik **yalnız güçlü modele** uygulanır (`--models` listesinin ilki; `make eval-sql`'in çıkış kodu buna bakar). Zayıf modelin puanı raporlanır ama kapı değildir.
+
+**Gerekçe.** D-025'te kurulan ayrım: zayıf model prompt'un belirsiz olduğu yeri gösteren alet, ürünün kalite çıtası değil. Zayıf modeli eşiğe tabi tutmak iki şeyi birbirine karıştırır ve prompt'u zayıf modele göre aşırı uydurmaya (overfit) iter. Tersi — eşiği zayıf modelden kaldırmak — teşhisi kaybeder.
+
+**Sonuç/ölçüm.** **Kriter karşılandı: %80,6 (29/36), eşik %70.**
+
+`gemini/gemini-3.6-flash`, 40 soru, 121 sn, **0 altyapı hatası**, ölçülen maliyet **$0,23** (283.304 girdi + 4.975 çıktı token, sağlayıcının kendi sayımı). Payda 36: 4 `unanswerable` sorusunun referans sonuç kümesi yok.
+
+**Kategori kırılımı:** `totals` %100, `filters` %100, `rates` %83, `percentiles` %80, `transfers` %80, `teams` %80, `match_detail` %40.
+
+Teşhisin değeri iki kolonun ayrılmasında: `rates` doğruluk %83 ama **zorunlu kolon 2/6** — model doğru per-90 değerini hesaplıyor ve dayandığı `minutes_played`'i döndürmüyor. Örneklemi olmayan bir oran, scouting raporunun basmasına izin verilmeyen bir sayıdır. Bu gerçek bir açık, ama doğruluk açığı değil; tek skorda birleştirmek onu gizliyordu.
+
+`match_detail` %40 ile en zayıf kategori ve kimse öngörmedi — şema prompt'unun en az şey söylediği kategori o.
+
+**Kalan 7 hatanın dağılımı:** 4'ü yanlış SQL (`rates-03` yanlış kolon, `percentiles-04` ters metrik tuzağı, `match_detail-03/-04`), 1'i yanlış ilişki (`transfers-02` kulüp bazlı soruyu birleşik view'dan cevapladı; `forbidden` boyutu yakaladı), 1'i yuvarlama tercihi (`teams-02` → `round(sum(xg), 2)`), 1'i farklı sonuç kümesi.
+
+**Yan ölçüm — onarım döngüsü: 0.** 40 soru ilk denemede guard'dan geçti, onarım yolu hiç çalışmadı. İki modelde, iki koşuda aynı sonuç. `generate.py`'nin docstring'indeki tahmin doğruydu.
+
+**Yan ölçüm — D-025 kalıcı mı?** 40 sorudan 39'unda yasak yapı ihlali yok. Tek ihlal `transfers-02` ve o zaten yanlış cevap.
+
+**Zayıf model artık zayıf değil.** `gemini-3.1-flash-lite` de 29/36 aldı, yalnız 4 uyuşmazlık kaldı. D-025'in dayandığı diferansiyel sinyal bu gold set'te inceldi; gerçekten daha zayıf bir model ya da daha zor sorular gerekiyor. Bu, D-028'in kararını geçersiz kılmıyor (eşik yine güçlü modele uygulanır) ama zayıf modelin teşhis değerini bu gold set için azaltıyor.
+
+**Tarih.** 2026-11-17
+
+---
+
+## D-029: Hakem cevabı yargılar, çıktı biçimini değil
+
+**Bağlam.** İlk gerçek koşu %66,7 verdi ve eşiği kaçırdı. 12 hatayı tek tek okuyunca **yalnız 3'ünün yanlış SQL olduğu** çıktı. Dördü şuydu:
+
+```sql
+-- referans:  select player, count(distinct comp) ...
+-- model:     SELECT player_id, player, COUNT(DISTINCT comp) AS n_comps, ...
+```
+
+Bilgi eksiksiz, üstüne fazlası var — ama konumsal önek karşılaştırması 1. kolonda `104058` görüp `'Ademola Lookman'` bekliyordu. Zayıf model aynı soruyu daha az kolonla yazıp doğru aldı: **benchmark daha bilgilendirici cevabı cezalandırıyordu.** Beş hata daha atlanan bağlam kolonuydu (`minutes_played`, `clubs`) — o bir çıktı sözleşmesi ihlali ve yeri `required_columns`.
+
+**Karar.** İki değişiklik, ve hiçbiri tek başına çalışmıyor:
+
+1. **Referans tam olarak cevabı içerir:** satırın kimliği + sorulan ölçü. Prompt'un istediği bağlam (`minutes_played`, `matches`, kulüp) `required_columns`'a taşındı. 24 referans düzenlendi.
+2. **Karşılaştırıcı referansın kolonlarını adayın içinde arar** — sırayı koruyarak, ama 0. konumdan başlamak zorunda olmadan. Eşleme **ilk satır çiftinden bir kez** türetilip tüm satırlara uygulanır; satır satır kolon seçmek, adayın her satırda başka bir kolonu seçerek eşleşmesine izin verirdi (test bunu sabitliyor).
+
+Neden birlikte: referansı tek başına küçültmek durumu kötüleştirir. Referans `(player, goals)` olup model `(player, teams, goals)` döndürdüğünde önek `(player, teams)` olur ve yine yanlış çıkar.
+
+**Gold set'in self-check'i de değişti.** Referans artık kendi `required_columns`'unu içermek zorunda değil — tasarım gereği içermiyor. Yerine katalog kontrolü geldi: her zorunlu kolon, referansın okuduğu ilişkilerden birinin **gerçek bir kolonu** olmak zorunda. Bu, `teams` yerine `team` yazmak gibi bir yazım hatasını yakalar; o hata düzeltilmezse her modeli sonsuza kadar başarısız yapar.
+
+**Alternatifler.** (a) Kuralı olduğu gibi bırakıp %66,7'yi kaydetmek: benchmark "doğru cevap" ile "doğru çıktı biçimi"ni tek sayıda karıştırmaya devam ederdi. (b) Yalnız alt-dizi eşleşmesi (referansları küçültmeden): baştaki kimlik kolonu sorununu çözerdi (4 soru) ama atlanan bağlam kolonlarını `correct`'te cezalandırmaya devam ederdi.
+
+**Sonuç/ölçüm.** Doğruluk **%66,7 → %80,6**, model değişmeden. O fark ölçüm hatasıydı. Açıkça söylemek gerekir: ilk sayı model hakkında yanlış, benchmark hakkında doğruydu.
+
+**Bilinen sınırlama.** Tolerans (bağıl 1e-6) sunum tercihini reddediyor: `teams-02` xG'yi iki ondalığa yuvarlayıp yanlış sayılıyor. Toleransı genel olarak gevşetmek gerçek hataları gizlerdi (per-90'da 5,77 ile 5,8 farkı önemlidir), o yüzden tolerans duruyor ve bu soru bilinen bir yanlış-negatif olarak kayıtlı.
+
+**Tarih.** 2026-11-17

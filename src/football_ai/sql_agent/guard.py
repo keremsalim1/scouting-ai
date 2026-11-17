@@ -119,8 +119,13 @@ def _refuse(reason: str) -> GuardResult:
     return GuardResult(ok=False, reason=reason)
 
 
-def _cte_names(tree: exp.Expression) -> set[str]:
-    """Names introduced by WITH, which may be referenced like tables."""
+def cte_names(tree: exp.Expression) -> set[str]:
+    """Names introduced by WITH, which may be referenced like tables.
+
+    Public because the day-6 structural checks need the same answer: two
+    copies of "which names are CTEs" would drift the first time one of them
+    learned about recursive CTEs.
+    """
     names: set[str] = set()
     for cte in tree.find_all(exp.CTE):
         alias = cte.alias_or_name
@@ -136,7 +141,7 @@ def _relation_name(table: exp.Table) -> tuple[str, str]:
 
 
 def _check_relations(tree: exp.Expression) -> str | None:
-    known = _cte_names(tree)
+    known = cte_names(tree)
     for table in tree.find_all(exp.Table):
         schema, name = _relation_name(table)
         if not name:

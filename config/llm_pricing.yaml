@@ -1,0 +1,40 @@
+# Provider prices, USD per 1,000,000 tokens, paid tier.
+#
+# Why a dated file instead of constants in code: these change. Gemini 3.x
+# Flash input doubles from $0.75 to $1.50 on 2027-01-01, which is inside this
+# project's calendar. A number baked into a report with no "as of" date is a
+# number nobody can check later.
+#
+# A model missing from this file is not an error: the report prints measured
+# token counts regardless and simply omits the cost line. Tokens are measured
+# from the provider's own usage block; only the multiplication is from here.
+#
+# Source: https://aistudio.google.com/docs/pricing
+as_of: 2026-11-17
+source: https://aistudio.google.com/docs/pricing
+
+models:
+  # Flash: $0.75 / $3.75 through 2026-12-31, then $1.50 / $7.50.
+  gemini/gemini-3.8-flash:
+    input: 0.75
+    output: 3.75
+    note: "doubles on 2027-01-01"
+  gemini/gemini-3.6-flash:
+    input: 0.75
+    output: 3.75
+    note: "doubles on 2027-01-01"
+  gemini/gemini-3.5-flash:
+    input: 0.75
+    output: 3.75
+    note: "shares a quota pool with 3.6-flash; a 429 for 3.5 names 3.6"
+
+  # Flash-Lite. The 3.1 price is not listed separately in the pricing page we
+  # read; 3.5-flash-lite's figures are used as a stand-in and flagged here so
+  # nobody treats the resulting cost as exact.
+  gemini/gemini-3.5-flash-lite:
+    input: 0.30
+    output: 2.50
+  gemini/gemini-3.1-flash-lite:
+    input: 0.30
+    output: 2.50
+    note: "price not listed separately; 3.5-flash-lite used as a stand-in"

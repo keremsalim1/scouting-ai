@@ -15,7 +15,9 @@ PSQL_USER ?= football_etl
 PSQL_DB ?= football
 
 .PHONY: help db-up db-down db-reset db-shell db-wait migrate etl etl-bench counts \
-        ask schema-prompt llm-models validate test test-data test-db lint fmt check setup
+        ask schema-prompt llm-models validate test test-data test-db lint fmt check setup \
+        eval-sql eval-sql-both eval-sql-gold eval-sql-merge \
+        eval-sql-batch1 eval-sql-batch2 eval-sql-batch3 eval-sql-smoke
 
 help:
 	@echo "setup      db-up + migrate + validate + etl  (first run, from scratch)"
@@ -31,6 +33,12 @@ help:
 	@echo "schema-prompt   print the schema description the model is given"
 	@echo "llm-models list the models your API key can actually reach"
 	@echo "validate   regenerate the data validation report and findings"
+	@echo "eval-sql        40-question text-to-SQL benchmark (needs an LLM key + loaded db)"
+	@echo "eval-sql-both   same, strong + weak model, with a disagreement table"
+	@echo "eval-sql-gold   validate the gold set: guard + EXPLAIN, no LLM (what CI runs)"
+	@echo "eval-sql-batch1/2/3  one day's worth of questions (free tier is 20 req/day)"
+	@echo "eval-sql-merge  stitch the batches into one accuracy number (no LLM call)"
+	@echo "eval-sql-smoke  one question per category: quick regression, 8 requests"
 	@echo "test       unit tests        test-data  real OpenPlay    test-db  database"
 	@echo "lint fmt   ruff check / ruff format"
 	@echo "check      lint + format check + unit tests"
@@ -77,6 +85,48 @@ llm-models:
 validate:
 	$(UV) run python scripts/validate_openplay.py reports
 	$(UV) run python scripts/explore_day1.py
+
+# The benchmark itself is local: it needs an API key and a loaded database, and
+# a provider 503 must never turn a pull request red. CI runs eval-sql-gold.
+#
+# The models are variables because the newest flash model is the most contended
+# one: gemini-3.8-flash returned 503 on 2 of 5 questions when this was wired
+# up, which is an unusable measurement. Override per run rather than editing a
+# recipe:  make eval-sql-both MODEL_STRONG=gemini/gemini-3.5-flash
+MODEL_STRONG ?= gemini/gemini-3.6-flash
+MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
+
+eval-sql:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG)
+
+eval-sql-both:
+	$(UV) run python scripts/eval_sql.py --models $(MODEL_STRONG),$(MODEL_WEAK)
+
+# Free-tier reality: the strong flash models allow 20 requests per DAY, while
+# the gold set has 40 questions. So the suite is run in batches and stitched
+# back together. Batch 1 is 16 questions, batch 2 is 15, batch 3 is 9 - each
+# inside the daily allowance even if a few questions need a repair attempt.
+# RPD resets at midnight Pacific.
+eval-sql-batch1:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --only totals-01,totals-02,totals-03,totals-04,totals-05,rates-01,rates-02,rates-03,rates-04,rates-05,rates-06,percentiles-01,percentiles-02,percentiles-03,percentiles-04,percentiles-05
+
+eval-sql-batch2:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --only transfers-01,transfers-02,transfers-03,transfers-04,transfers-05,teams-01,teams-02,teams-03,teams-04,teams-05,match_detail-01,match_detail-02,match_detail-03,match_detail-04,match_detail-05
+
+eval-sql-batch3:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --only filters-01,filters-02,filters-03,filters-04,filters-05,unanswerable-01,unanswerable-02,unanswerable-03,unanswerable-04
+
+# One question per category. 8 requests, so it fits the daily free-tier
+# allowance and can be run after every prompt change.
+eval-sql-smoke:
+	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG) --smoke
+
+# Stitch the batches into one accuracy number. Makes no provider call.
+eval-sql-merge:
+	$(UV) run python scripts/eval_sql.py --merge reports/eval_sql --model $(MODEL_STRONG)
+
+eval-sql-gold:
+	$(UV) run python scripts/eval_sql_gold.py
 
 test:
 	$(UV) run pytest

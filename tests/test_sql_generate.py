@@ -520,3 +520,119 @@ def test_other_provider_errors_still_propagate(monkeypatch) -> None:
     client = generate.LiteLLMClient(model="x", temperature=0, timeout_s=5)
     with pytest.raises(RuntimeError, match="rate limit"):
         client.complete("sys", "user")
+
+
+def _fake_litellm_with_usage(monkeypatch, *, prompt_tokens: int, completion_tokens: int):
+    """Stand in for litellm, returning a usage block like the real provider."""
+    import sys
+    import types
+
+    def completion(**_kwargs):
+        message = types.SimpleNamespace(content="select 1")
+        usage = types.SimpleNamespace(
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+        )
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)], usage=usage)
+
+    module = types.ModuleType("litellm")
+    module.completion = completion
+    monkeypatch.setitem(sys.modules, "litellm", module)
+
+
+def test_client_accumulates_token_usage(monkeypatch) -> None:
+    """Measured tokens replace guessed ones: the run can price itself instead
+    of being estimated from character counts."""
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+    _fake_litellm_with_usage(monkeypatch, prompt_tokens=5000, completion_tokens=120)
+    client = generate.LiteLLMClient(model="x", timeout_s=5)
+    client.complete("sys", "user")
+    client.complete("sys", "user")
+    assert client.prompt_tokens == 10_000
+    assert client.completion_tokens == 240
+
+
+def test_client_tolerates_a_provider_that_reports_no_usage(monkeypatch) -> None:
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+    _fake_litellm(monkeypatch, reject_temperature=False)
+    client = generate.LiteLLMClient(model="x", timeout_s=5)
+    client.complete("sys", "user")
+    assert client.prompt_tokens == 0
+    assert client.completion_tokens == 0
+
+
+# ---------------------------------------------------------------------------
+# A daily-quota 429 is not transient
+# ---------------------------------------------------------------------------
+
+_DAILY_QUOTA_ERROR = (
+    "litellm.RateLimitError: geminiException - {'error': {'code': 429, 'message': "
+    "'You exceeded your current quota. * Quota exceeded for metric: "
+    "generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+    "limit: 20, model: gemini-3.6-flash, description: Generate content requests "
+    "per day limit exceeded on Free Tier. Please retry in 13h20m49s.'}}"
+)
+
+_PER_MINUTE_ERROR = (
+    "litellm.RateLimitError: 429 Quota exceeded for metric: "
+    "generate_content_free_tier_requests per minute. Please retry in 31.2s."
+)
+
+
+def test_a_daily_quota_error_is_recognised() -> None:
+    assert generate._is_daily_quota(RuntimeError(_DAILY_QUOTA_ERROR)) is True
+
+
+def test_a_per_minute_rate_limit_is_not_a_daily_quota_error() -> None:
+    assert generate._is_daily_quota(RuntimeError(_PER_MINUTE_ERROR)) is False
+
+
+def test_an_unrelated_error_is_not_a_daily_quota_error() -> None:
+    assert generate._is_daily_quota(RuntimeError("503 Service Unavailable")) is False
+
+
+def test_the_daily_quota_is_not_retried(monkeypatch) -> None:
+    """Every retry is another request against the quota that just ran out, and
+    the provider already said it needs 13 hours. Retrying makes it worse."""
+    import sys
+    import types
+
+    calls: list[int] = []
+
+    def completion(**_kwargs):
+        calls.append(1)
+        raise RuntimeError(_DAILY_QUOTA_ERROR)
+
+    module = types.ModuleType("litellm")
+    module.completion = completion
+    monkeypatch.setitem(sys.modules, "litellm", module)
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+
+    client = generate.LiteLLMClient(model="x", timeout_s=5, max_retries=3)
+    client._sleep = lambda _s: None
+    with pytest.raises(generate.QuotaExhausted):
+        client.complete("sys", "user")
+    assert len(calls) == 1
+
+
+def test_a_per_minute_rate_limit_is_still_retried(monkeypatch) -> None:
+    import sys
+    import types
+
+    calls: list[int] = []
+
+    def completion(**_kwargs):
+        calls.append(1)
+        if len(calls) < 2:
+            raise RuntimeError(_PER_MINUTE_ERROR)
+        message = types.SimpleNamespace(content="select 1")
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)])
+
+    module = types.ModuleType("litellm")
+    module.completion = completion
+    monkeypatch.setitem(sys.modules, "litellm", module)
+    monkeypatch.setattr(generate, "load_env", lambda: None)
+
+    client = generate.LiteLLMClient(model="x", timeout_s=5, max_retries=3)
+    client._sleep = lambda _s: None
+    assert client.complete("sys", "user") == "select 1"
+    assert len(calls) == 2
