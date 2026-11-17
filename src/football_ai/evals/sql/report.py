@@ -195,6 +195,89 @@ def to_json(suites: Sequence[SuiteResult]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+def _rows(payload: list) -> tuple[tuple, ...]:
+    return tuple(tuple(row) for row in payload or ())
+
+
+def from_json(text: str) -> tuple[SuiteResult, ...]:
+    """Rebuild suites from a report file.
+
+    Needed because the free tier allows 20 requests a day: a 40-question run
+    has to be split across days, and the partial runs are only useful if they
+    can be read back and stitched into one accuracy number.
+    """
+    payload = json.loads(text)
+    suites: list[SuiteResult] = []
+    for raw in payload["suites"]:
+        results = tuple(
+            QuestionResult(
+                id=r["id"],
+                category=r["category"],
+                question=r["question"],
+                model=r["model"],
+                generated_sql=r["generated_sql"],
+                executes=r["executes"],
+                correct=r["correct"],
+                required_columns=r["required_columns"],
+                no_forbidden=r["no_forbidden"],
+                infra_error=r["infra_error"],
+                reference_failed=r["reference_failed"],
+                repairs_used=r["repairs_used"],
+                structure_differs=r["structure_differs"],
+                reason=r["reason"],
+                seconds=r["seconds"],
+                reference_rows=_rows(r.get("reference_rows")),
+                candidate_rows=_rows(r.get("candidate_rows")),
+            )
+            for r in raw["results"]
+        )
+        suites.append(
+            SuiteResult(
+                model=raw["model"],
+                started_at=dt.datetime.fromisoformat(raw["started_at"]),
+                results=results,
+                temperature_supported=raw["temperature_supported"],
+                reasoning_effort_supported=raw["reasoning_effort_supported"],
+                retries_used=raw["retries_used"],
+                seconds=raw["seconds"],
+            )
+        )
+    return tuple(suites)
+
+
+def merge(suites: Sequence[SuiteResult]) -> SuiteResult:
+    """Stitch partial runs of one model into a single suite.
+
+    Questions are keyed by id and a later suite replaces an earlier answer, so
+    re-running one question after a fix does not leave two verdicts in the
+    denominator. The run identity comes from the earliest batch; a parameter
+    the provider refused in ANY batch is remembered, because one dropped
+    `temperature` makes the whole merged measurement non-deterministic.
+    """
+    if not suites:
+        msg = "no suites to merge"
+        raise ValueError(msg)
+    models = {s.model for s in suites}
+    if len(models) > 1:
+        msg = f"merge needs the same model in every run, got: {', '.join(sorted(models))}"
+        raise ValueError(msg)
+
+    by_id: dict[str, QuestionResult] = {}
+    for suite in suites:
+        for result in suite.results:
+            by_id[result.id] = result
+
+    return SuiteResult(
+        model=next(iter(models)),
+        started_at=min(s.started_at for s in suites),
+        results=tuple(by_id.values()),
+        temperature_supported=all(s.temperature_supported for s in suites),
+        reasoning_effort_supported=all(s.reasoning_effort_supported for s in suites),
+        retries_used=sum(s.retries_used for s in suites),
+        seconds=sum(s.seconds for s in suites),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Markdown
 # ---------------------------------------------------------------------------

@@ -84,6 +84,68 @@ def _select(gold: goldset.GoldSet, args: argparse.Namespace) -> tuple[goldset.Qu
     return gold.select()
 
 
+def _write_report(out_dir: Path, name: str, suites: list, threshold: float) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / f"{name}.json"
+    md_path = out_dir / f"{name}.md"
+    # Trailing newline so the end-of-file-fixer hook does not rewrite every
+    # report the moment it is committed.
+    json_path.write_text(report.to_json(suites) + "\n", encoding="utf-8")
+    md_path.write_text(report.to_markdown(suites, threshold=threshold), encoding="utf-8")
+    LATEST_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(md_path, LATEST_REPORT)
+    print(f"\n{json_path}\n{md_path}")
+    return json_path
+
+
+def _verdict_code(suite, threshold: float) -> int:
+    scores = report.score(suite.results)
+    if scores.accuracy is None:
+        print("doğruluk hesaplanamadı: puanlanabilir soru yok")
+        return 1
+    print(
+        f"doğruluk %{scores.accuracy * 100:.1f} "
+        f"({scores.correct}/{scores.scored}), eşik %{threshold * 100:.0f}"
+    )
+    return 0 if scores.accuracy >= threshold else 1
+
+
+def _merge_runs(args: argparse.Namespace) -> int:
+    """Stitch earlier partial runs into one report, with no provider call.
+
+    This exists because the free tier allows 20 requests a day while the gold
+    set has 40 questions: the suite is run in batches with `--category` or
+    `--only` and the batches are only useful if they combine into a single
+    accuracy number.
+    """
+    source = Path(args.merge)
+    files = sorted(source.glob("*.json")) if source.is_dir() else []
+    files = [f for f in files if not f.name.endswith("-merged.json")]
+    if not files:
+        print(f"no run files to merge in {source}")
+        return 2
+
+    loaded = [s for f in files for s in report.from_json(f.read_text(encoding="utf-8"))]
+    wanted = args.model or args.models
+    if wanted:
+        loaded = [s for s in loaded if s.model == wanted]
+    models = sorted({s.model for s in loaded})
+    if not loaded:
+        print(f"no runs for model {wanted!r} in {source}")
+        return 2
+    if len(models) > 1:
+        print(f"several models present; pass --model to pick one: {', '.join(models)}")
+        return 2
+
+    merged = report.merge(loaded)
+    print(
+        f"{len(files)} dosyadan {len(merged.results)} soru birleştirildi "
+        f"({merged.model}, {len(loaded)} koşu)"
+    )
+    _write_report(Path(args.out), f"{merged.run_id}-merged", [merged], args.threshold)
+    return _verdict_code(merged, args.threshold)
+
+
 def main(argv: list[str] | None = None) -> int:
     force_utf8()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -94,7 +156,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default=str(DEFAULT_OUT), help="report directory")
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--max-rows", type=int, default=guard.DEFAULT_LIMIT)
+    parser.add_argument(
+        "--merge",
+        metavar="DIR",
+        help="stitch earlier runs in DIR into one report; makes no provider call",
+    )
     args = parser.parse_args(argv)
+
+    if args.merge:
+        return _merge_runs(args)
 
     if args.models:
         models = [part.strip() for part in args.models.split(",") if part.strip()]
@@ -132,29 +202,8 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    run_id = suites[0].run_id
-    json_path = out_dir / f"{run_id}.json"
-    md_path = out_dir / f"{run_id}.md"
-    # Trailing newline so the end-of-file-fixer hook does not rewrite every
-    # report the moment it is committed.
-    json_path.write_text(report.to_json(suites) + "\n", encoding="utf-8")
-    markdown = report.to_markdown(suites, threshold=args.threshold)
-    md_path.write_text(markdown, encoding="utf-8")
-    LATEST_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(md_path, LATEST_REPORT)
-
-    scores = report.score(suites[0].results)
-    print(f"\n{json_path}\n{md_path}")
-    if scores.accuracy is None:
-        print("doğruluk hesaplanamadı: puanlanabilir soru yok")
-        return 1
-    print(
-        f"doğruluk %{scores.accuracy * 100:.1f} "
-        f"({scores.correct}/{scores.scored}), eşik %{args.threshold * 100:.0f}"
-    )
-    return 0 if scores.accuracy >= args.threshold else 1
+    _write_report(Path(args.out), suites[0].run_id, suites, args.threshold)
+    return _verdict_code(suites[0], args.threshold)
 
 
 if __name__ == "__main__":

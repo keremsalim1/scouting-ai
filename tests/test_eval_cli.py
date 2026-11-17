@@ -247,6 +247,48 @@ def test_each_model_gets_its_own_client(tmp_path, monkeypatch):
     assert built == ["strong", "weak"]
 
 
+def test_merge_rebuilds_one_report_from_partial_runs(tmp_path, monkeypatch):
+    """The free tier allows 20 calls a day, so a 40-question run is split
+    across days; --merge turns the batches back into one accuracy number."""
+    _stub_run(monkeypatch, lambda model: _suite(True, True, model=model))
+    eval_sql.main(["--model", "stub/stub-model", "--only", "totals-01", "--out", str(tmp_path)])
+
+    second = tmp_path / "day2.json"
+    second.write_text(
+        eval_sql.report.to_json([_suite(False, model="stub/stub-model")]), encoding="utf-8"
+    )
+
+    code = eval_sql.main(
+        ["--merge", str(tmp_path), "--model", "stub/stub-model", "--out", str(tmp_path)]
+    )
+    merged = eval_sql.report.from_json(
+        max(tmp_path.glob("*-merged.json"), key=lambda p: p.stat().st_mtime).read_text(
+            encoding="utf-8"
+        )
+    )[0]
+    assert {r.id for r in merged.results} == {"q-01", "q-02"}
+    assert code in (0, 1)
+
+
+def test_merge_without_files_is_an_error(tmp_path):
+    assert eval_sql.main(["--merge", str(tmp_path / "empty"), "--out", str(tmp_path)]) == 2
+
+
+def test_merge_makes_no_provider_call(tmp_path, monkeypatch):
+    """Merging is offline: it must not spend a request from the daily quota."""
+
+    def explode(*_a, **_k):
+        raise AssertionError("merge called the provider")
+
+    monkeypatch.setattr(eval_sql, "run_suite", explode)
+    monkeypatch.setattr(eval_sql, "LiteLLMClient", explode)
+    source = tmp_path / "run.json"
+    source.write_text(
+        eval_sql.report.to_json([_suite(True, model="stub/stub-model")]), encoding="utf-8"
+    )
+    assert eval_sql.main(["--merge", str(tmp_path), "--out", str(tmp_path)]) == 0
+
+
 def test_progress_is_printed_per_question(tmp_path, monkeypatch, capsys):
     """A 40-question run takes minutes; silence is indistinguishable from a hang."""
 

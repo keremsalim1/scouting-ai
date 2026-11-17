@@ -363,6 +363,85 @@ def test_json_serialises_kept_rows():
     assert payload["suites"][0]["results"][0]["reference_rows"] == [["Saka", 11]]
 
 
+def test_from_json_round_trips_a_suite():
+    suite = _suite(_result("totals-01", correct=True), _result("rates-01", correct=False))
+    restored = report.from_json(report.to_json([suite]))[0]
+    assert restored.model == suite.model
+    assert restored.run_id == suite.run_id
+    assert [r.id for r in restored.results] == ["totals-01", "rates-01"]
+    assert [r.correct for r in restored.results] == [True, False]
+
+
+def test_from_json_restores_the_rows_kept_for_a_failure():
+    suite = _suite(
+        _result(
+            "totals-01",
+            correct=False,
+            reference_rows=(("Saka", 11),),
+            candidate_rows=(("Saka", 9),),
+        )
+    )
+    restored = report.from_json(report.to_json([suite]))[0]
+    assert restored.results[0].reference_rows == (("Saka", 11),)
+
+
+def test_merge_combines_partial_runs_of_one_model():
+    """The free tier allows 20 calls a day, so a 40-question run has to be
+    split across days and stitched back into one accuracy number."""
+    day1 = _suite(_result("totals-01", correct=True), _result("totals-02", correct=True))
+    day2 = _suite(_result("rates-01", correct=False))
+    merged = report.merge([day1, day2])
+    assert [r.id for r in merged.results] == ["totals-01", "totals-02", "rates-01"]
+    assert report.score(merged.results).scored == 3
+    assert report.score(merged.results).correct == 2
+
+
+def test_merge_lets_a_later_run_replace_an_earlier_answer():
+    """Re-running one question after a fix must not leave both verdicts in."""
+    first = _suite(_result("totals-01", correct=False))
+    second = _suite(_result("totals-01", correct=True))
+    merged = report.merge([first, second])
+    assert len(merged.results) == 1
+    assert merged.results[0].correct is True
+
+
+def test_merge_keeps_the_earliest_start_and_sums_the_time():
+    day1 = _suite(_result("totals-01"))
+    day2 = runner.SuiteResult(
+        model="gemini/gemini-3.8-flash",
+        started_at=dt.datetime(2026, 11, 18, 9, 0, 0, tzinfo=dt.UTC),
+        results=(_result("rates-01"),),
+        temperature_supported=True,
+        reasoning_effort_supported=True,
+        retries_used=3,
+        seconds=20.0,
+    )
+    merged = report.merge([day1, day2])
+    assert merged.started_at == day1.started_at
+    assert merged.seconds == pytest.approx(32.5)
+    assert merged.retries_used == 3
+
+
+def test_merge_remembers_a_dropped_parameter_from_any_run():
+    """A parameter the provider refused in one batch makes the whole merged
+    measurement non-deterministic, so the flag must not be lost."""
+    day1 = _suite(_result("totals-01"), temperature_supported=False)
+    day2 = _suite(_result("rates-01"))
+    assert report.merge([day1, day2]).temperature_supported is False
+
+
+def test_merge_refuses_to_mix_models():
+    a = _suite(_result("totals-01"))
+    b = _suite(_result("rates-01"), model="gemini/gemini-3.1-flash-lite")
+    with pytest.raises(ValueError, match="same model"):
+        report.merge([a, b])
+
+
+def test_merge_rejects_an_empty_list():
+    with pytest.raises(ValueError, match="no suites"):
+        report.merge([])
+
+
 def test_json_serialises_values_psycopg_returns():
     """Decimal and date are not JSON types; a run must not die at write time."""
     from decimal import Decimal
