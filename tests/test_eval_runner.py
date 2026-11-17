@@ -368,3 +368,89 @@ def test_run_id_is_stable_and_model_slugged():
         retries_used=0,
     )
     assert suite.run_id == "20261116T120000Z-gemini-3.8-flash"
+
+
+# ---------------------------------------------------------------------------
+# Stopping when the daily allowance runs out
+# ---------------------------------------------------------------------------
+
+
+class _QuotaClient:
+    """Answers `budget` questions, then reports the daily allowance is gone."""
+
+    def __init__(self, budget: int, reply: str) -> None:
+        self.budget = budget
+        self.reply = reply
+        self.calls = 0
+
+    def complete(self, system: str, user: str) -> str:
+        self.calls += 1
+        if self.calls > self.budget:
+            raise generate.QuotaExhausted("per day limit exceeded, retry in 13h")
+        return self.reply
+
+
+def _three_questions() -> tuple[goldset.Question, ...]:
+    return goldset.parse(
+        [
+            {
+                "id": f"totals-0{i}",
+                "question": "soru",
+                "category": "totals",
+                "reference_sql": REFERENCE,
+                "order_sensitive": True,
+            }
+            for i in (1, 2, 3)
+        ]
+    ).questions
+
+
+def test_run_suite_stops_when_the_daily_quota_runs_out(executor):
+    """The remaining questions must not be reported as separate failures: the
+    truth is one condition, not N wrong answers."""
+    suite = runner.run_suite(
+        _three_questions(),
+        conn=None,
+        client=_QuotaClient(budget=1, reply=REFERENCE),
+        model="m",
+    )
+    assert [r.id for r in suite.results] == ["totals-01"]
+    assert suite.quota_exhausted is True
+
+
+def test_a_completed_suite_does_not_claim_the_quota_ran_out(executor):
+    suite = runner.run_suite(
+        _three_questions(),
+        conn=None,
+        client=_QuotaClient(budget=10, reply=REFERENCE),
+        model="m",
+    )
+    assert len(suite.results) == 3
+    assert suite.quota_exhausted is False
+
+
+def test_the_question_that_hit_the_quota_is_not_scored(executor):
+    """It produced no answer, so counting it would charge the model for the
+    provider's accounting."""
+    suite = runner.run_suite(
+        _three_questions(),
+        conn=None,
+        client=_QuotaClient(budget=2, reply=REFERENCE),
+        model="m",
+    )
+    assert [r.id for r in suite.results] == ["totals-01", "totals-02"]
+    assert all(r.infra_error is False for r in suite.results)
+
+
+def test_a_request_budget_stops_the_run_before_the_provider_does(executor):
+    """Spending the whole daily allowance on one run leaves nothing to resume
+    with, so the caller can cap it."""
+    suite = runner.run_suite(
+        _three_questions(),
+        conn=None,
+        client=_QuotaClient(budget=10, reply=REFERENCE),
+        model="m",
+        max_questions=2,
+    )
+    assert [r.id for r in suite.results] == ["totals-01", "totals-02"]
+    assert suite.budget_reached is True

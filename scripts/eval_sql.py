@@ -170,6 +170,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--max-rows", type=int, default=guard.DEFAULT_LIMIT)
     parser.add_argument(
+        "--budget",
+        type=int,
+        metavar="N",
+        help="stop after N questions, to keep some of the daily allowance in reserve",
+    )
+    parser.add_argument(
         "--merge",
         metavar="DIR",
         help="stitch earlier runs in DIR into one report; makes no provider call",
@@ -210,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
                     on_result=_progress,
                     max_rows=args.max_rows,
                     reference_cache=reference_cache,
+                    max_questions=args.budget,
                 )
             )
     finally:

@@ -86,6 +86,10 @@ class SuiteResult:
     # Billed tokens as the provider reported them, so a run can price itself.
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # The run stopped early. `results` then holds only the questions actually
+    # attempted, which keeps the denominator honest and lets --merge resume.
+    quota_exhausted: bool = False
+    budget_reached: bool = False
 
     @property
     def model_slug(self) -> str:
@@ -155,6 +159,10 @@ def run_question(
         produced = generate.text_to_sql(
             question.question, conn=conn, client=client, max_rows=max_rows
         )
+    except generate.QuotaExhausted:
+        # Not an infra_error for this one question: the allowance is gone for
+        # every question after it too, so run_suite stops instead.
+        raise
     except Exception as exc:
         # Defensive: text_to_sql catches provider errors itself (see below),
         # so reaching here means a client raised outside the call it guards.
@@ -289,19 +297,40 @@ def run_suite(
     on_result: Callable[[QuestionResult], None] | None = None,
     max_rows: int = guard.DEFAULT_LIMIT,
     reference_cache: dict[str, execute.Execution] | None = None,
+    max_questions: int | None = None,
 ) -> SuiteResult:
-    """Score every question against one model."""
+    """Score every question against one model.
+
+    Stops early on two conditions, and records which one:
+
+    * `quota_exhausted` - the provider's daily allowance is gone. The
+      remaining questions are left out rather than recorded as failures: the
+      truth is one condition, not N wrong answers, and `--merge` resumes from
+      what landed.
+    * `budget_reached` - `max_questions` was hit. Spending the whole daily
+      allowance on one run leaves nothing to resume with.
+    """
     started = dt.datetime.now(dt.UTC)
     results: list[QuestionResult] = []
+    quota_exhausted = False
+    budget_reached = False
+
     for question in questions:
-        result = run_question(
-            question,
-            conn=conn,
-            client=client,
-            model=model,
-            max_rows=max_rows,
-            reference_cache=reference_cache,
-        )
+        if max_questions is not None and len(results) >= max_questions:
+            budget_reached = True
+            break
+        try:
+            result = run_question(
+                question,
+                conn=conn,
+                client=client,
+                model=model,
+                max_rows=max_rows,
+                reference_cache=reference_cache,
+            )
+        except generate.QuotaExhausted:
+            quota_exhausted = True
+            break
         results.append(result)
         if on_result is not None:
             on_result(result)
@@ -318,4 +347,6 @@ def run_suite(
         seconds=(dt.datetime.now(dt.UTC) - started).total_seconds(),
         prompt_tokens=int(getattr(client, "prompt_tokens", 0)),
         completion_tokens=int(getattr(client, "completion_tokens", 0)),
+        quota_exhausted=quota_exhausted,
+        budget_reached=budget_reached,
     )

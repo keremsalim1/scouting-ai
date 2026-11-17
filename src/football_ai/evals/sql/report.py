@@ -215,6 +215,8 @@ def to_json(suites: Sequence[SuiteResult]) -> str:
                 "temperature_supported": suite.temperature_supported,
                 "reasoning_effort_supported": suite.reasoning_effort_supported,
                 "retries_used": suite.retries_used,
+                "quota_exhausted": suite.quota_exhausted,
+                "budget_reached": suite.budget_reached,
                 "prompt_tokens": suite.prompt_tokens,
                 "completion_tokens": suite.completion_tokens,
                 "cost_usd": cost_usd(suite),
@@ -277,6 +279,8 @@ def from_json(text: str) -> tuple[SuiteResult, ...]:
                 seconds=raw["seconds"],
                 prompt_tokens=raw.get("prompt_tokens", 0),
                 completion_tokens=raw.get("completion_tokens", 0),
+                quota_exhausted=raw.get("quota_exhausted", False),
+                budget_reached=raw.get("budget_reached", False),
             )
         )
     return tuple(suites)
@@ -314,6 +318,9 @@ def merge(suites: Sequence[SuiteResult]) -> SuiteResult:
         seconds=sum(s.seconds for s in suites),
         prompt_tokens=sum(s.prompt_tokens for s in suites),
         completion_tokens=sum(s.completion_tokens for s in suites),
+        # A merged result is only 'cut short' if the LAST batch was.
+        quota_exhausted=suites[-1].quota_exhausted,
+        budget_reached=suites[-1].budget_reached,
     )
 
 
@@ -358,6 +365,20 @@ def _suite_section(suite: SuiteResult, threshold: float) -> list[str]:
         f"(cevaplanamaz {unanswerable}, altyapı hatası {scores.infra_errors}, "
         f"bozuk referans {scores.reference_failures})"
     )
+    if suite.quota_exhausted:
+        lines += [
+            "",
+            "> **Koşu yarıda kaldı: sağlayıcının günlük istek hakkı bitti.** Yalnızca "
+            f"yukarıdaki {len(suite.results)} soru denendi; kalanlar hiç sorulmadı, bu "
+            "yüzden hata olarak da sayılmadı. Kota Pasifik gece yarısı sıfırlanıyor; "
+            "kaldığı yerden devam edip `make eval-sql-merge` ile birleştir.",
+        ]
+    if suite.budget_reached:
+        lines += [
+            "",
+            f"> Koşu `--budget` sınırında durdu ({len(suite.results)} soru). Günlük "
+            "hakkın tamamını tek koşuda harcamamak için.",
+        ]
     if suite.retries_used:
         lines.append(f"- Sağlayıcı yeniden denemesi: {suite.retries_used}")
 
