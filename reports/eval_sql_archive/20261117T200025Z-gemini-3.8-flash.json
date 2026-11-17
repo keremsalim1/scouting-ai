@@ -1,0 +1,232 @@
+{
+  "generated_at": "2026-11-17T20:00:46.226508+00:00",
+  "suites": [
+    {
+      "run_id": "20261117T200025Z-gemini-3.8-flash",
+      "model": "gemini/gemini-3.8-flash",
+      "started_at": "2026-11-17T20:00:25.497414+00:00",
+      "seconds": 20.729,
+      "temperature_supported": false,
+      "reasoning_effort_supported": true,
+      "retries_used": 0,
+      "quota_exhausted": false,
+      "budget_reached": false,
+      "prompt_tokens": 43691,
+      "completion_tokens": 275,
+      "cost_usd": 0.0337995,
+      "scores": {
+        "scored": 6,
+        "total": 6,
+        "correct": 5,
+        "executes": 6,
+        "required_columns": 6,
+        "no_forbidden": 6,
+        "infra_errors": 0,
+        "reference_failures": 0,
+        "accuracy": 0.8333333333333334
+      },
+      "scores_by_category": {
+        "filters": {
+          "scored": 4,
+          "total": 4,
+          "correct": 4,
+          "executes": 4,
+          "required_columns": 4,
+          "no_forbidden": 4,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "match_detail": {
+          "scored": 2,
+          "total": 2,
+          "correct": 1,
+          "executes": 2,
+          "required_columns": 2,
+          "no_forbidden": 2,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.5
+        }
+      },
+      "results": [
+        {
+          "id": "filters-03",
+          "category": "filters",
+          "question": "2025/26 sezonunda La Liga'da kaç maç oynandı?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS matches_played FROM football.matches WHERE comp = 'esp' AND season = '2526' AND status_code = 6 LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 9.885,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-04",
+          "category": "match_detail",
+          "question": "Premier League'de xG'si en yüksek 10 şut kime ait?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT p.player, t.team, s.xg, s.minute, s.result, m.home_team, m.away_team FROM football.shots AS s JOIN football.players AS p ON s.player_id = p.player_id JOIN football.teams AS t ON s.team_id = t.team_id JOIN football.matches AS m ON s.match_id = m.match_id WHERE s.comp = 'eng' AND s.xg IS NOT NULL ORDER BY s.xg DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 2.713,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-01",
+          "category": "filters",
+          "question": "Premier League'de kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(DISTINCT player_id) AS total_players FROM football.player_season WHERE comp = 'eng' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.284,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-02",
+          "category": "filters",
+          "question": "Serie A'da stoper olarak sınıflanan kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS cb_count FROM football.player_season WHERE comp = 'ita' AND position_group = 'CB' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.144,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-05",
+          "category": "filters",
+          "question": "Premier League'de geniş pozisyon grubu hücum olan kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) FROM football.player_season WHERE comp = 'eng' AND position_group_broad = 'ATT' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.811,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-02",
+          "category": "match_detail",
+          "question": "Which 5 La Liga matches had the highest attendance?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT home_team, away_team, date, attendance FROM football.matches WHERE comp = 'esp' AND attendance IS NOT NULL ORDER BY attendance DESC LIMIT 5",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 1, column 2: 'Real Madrid' is not in the candidate row",
+          "seconds": 1.893,
+          "reference_rows": [
+            [
+              "2025-10-26",
+              "Real Madrid",
+              "Barcelona",
+              78107
+            ],
+            [
+              "2026-03-22",
+              "Real Madrid",
+              "Atletico",
+              77964
+            ],
+            [
+              "2025-10-04",
+              "Real Madrid",
+              "Villarreal",
+              75216
+            ],
+            [
+              "2026-01-04",
+              "Real Madrid",
+              "Real Betis",
+              75190
+            ],
+            [
+              "2025-11-01",
+              "Real Madrid",
+              "Valencia",
+              74796
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Real Madrid",
+              "Barcelona",
+              "2025-10-26",
+              78107
+            ],
+            [
+              "Real Madrid",
+              "Atletico",
+              "2026-03-22",
+              77964
+            ],
+            [
+              "Real Madrid",
+              "Villarreal",
+              "2025-10-04",
+              75216
+            ],
+            [
+              "Real Madrid",
+              "Real Betis",
+              "2026-01-04",
+              75190
+            ],
+            [
+              "Real Madrid",
+              "Valencia",
+              "2025-11-01",
+              74796
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

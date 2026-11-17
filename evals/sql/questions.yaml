@@ -229,15 +229,18 @@
     limit 5
 
 - id: percentiles-04
-  question: "La Liga stoperleri arasında top kaybı metriğinde en iyi 10 oyuncu"
+  question: "La Liga stoperleri arasında kötü kontrol (miscontrols) metriğinde en iyi 10 oyuncu"
   category: percentiles
   order_sensitive: true
   required_columns: [player, teams, percentile, comparison_group_size]
   forbidden: [minutes_filter]
   notes: >
-    Tuzak: miscontrols_per90 için higher_is_better false. Yüzdelik veri
-    katmanında çevrilmiş, yani "en iyi" = percentile desc. Ham değere göre
-    sıralamak (value asc) de aynı sırayı verebilir ama yüzdelik doğru yoldur.
+    Ters yönlü metrik: miscontrols_per90 için higher_is_better false, yüzdelik
+    veri katmanında çevrilmiş, yani "en iyi" = percentile desc. Soru ilk
+    halinde "top kaybı" diyordu ve metrics.yaml'da iki metrik de bu anlama
+    geliyor ("Kötü kontrol" = miscontrols, "Top kaptırma" = dispossessed);
+    model dispossessed_per90 seçti ve haklıydı. Soru artık metriğin kendi
+    etiketini kullanıyor, böylece ters yönlü metrik tuzağı gerçekten sınanıyor.
   reference_sql: |
     select player, percentile
     from football.player_metrics
@@ -425,20 +428,20 @@
 # ---------------------------------------------------------------------------
 
 - id: match_detail-01
-  question: "Premier League'de en çok gol atılan 5 maç hangileri?"
+  question: "Premier League'de en çok gol atılan 7 maç hangileri?"
   category: match_detail
   order_sensitive: true
   required_columns: [home_team, away_team]
   notes: >
-    matches tablosu, home_score + away_score toplamı. İki maç aynı gün 7 gollü
-    olduğu için sıralama date'ten sonra home_team ile de ayrılıyor; tek
-    başına gol toplamı 5. sırada eşitliğe düşüyor.
+    matches tablosu, home_score + away_score toplamı. Limit 7 seçildi: 7 gollü
+    beş maç var ve kümülatif tam 7'de bitiyor, yani "ilk 5" matematiksel olarak
+    belirsiz - 5. sıraya hangi maçın girdiği keyfi olurdu.
   reference_sql: |
     select date, home_team, away_team, home_score + away_score as total_goals
     from football.matches
     where comp = 'eng'
     order by total_goals desc, date, home_team
-    limit 5
+    limit 7
 
 - id: match_detail-02
   question: "Which 5 La Liga matches had the highest attendance?"
@@ -454,17 +457,18 @@
     limit 5
 
 - id: match_detail-03
-  question: "Serie A'da en çok şut çekilen 5 maç"
+  question: "Serie A'da en çok şut çekilen 6 maç"
   category: match_detail
   order_sensitive: true
   required_columns: [home_team, away_team]
-  notes: "matches.n_shots hazır kolon; shots tablosunu saymak da aynı sonucu verir."
+  notes: "matches.n_shots hazır kolon. Limit 6: 39 şutlu iki maç kümülatif 6da
+    bitiyor, 5 olsa kesme noktası eşitliğe düşerdi."
   reference_sql: |
     select date, home_team, away_team, n_shots
     from football.matches
     where comp = 'ita'
     order by n_shots desc, date
-    limit 5
+    limit 6
 
 - id: match_detail-04
   question: "Premier League'de xG'si en yüksek 10 şut kime ait?"

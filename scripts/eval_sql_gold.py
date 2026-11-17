@@ -24,7 +24,6 @@ import sys
 
 import psycopg
 import sqlglot
-from sqlglot import exp
 
 from football_ai.console import force_utf8
 from football_ai.data import db
@@ -49,39 +48,6 @@ EXPECTED_COUNTS = {
 def _with_limit(sql: str, limit: int) -> str:
     tree = sqlglot.parse_one(sql, dialect=guard.DIALECT)
     return tree.limit(limit, copy=True).sql(dialect=guard.DIALECT)
-
-
-def _order_column_indexes(sql: str) -> tuple[int, ...]:
-    """Where every ORDER BY expression sits in the SELECT list.
-
-    All of them, not just the first: `order by total_goals desc, date` is
-    deterministic even when two rows share `total_goals`, and checking only
-    the leading column would report a tie that does not exist.
-
-    Raises when an ordering column is not projected, which makes "the ORDER BY
-    columns must be in the SELECT list" an enforced rule rather than a
-    convention. Without it the tie check cannot see the values it needs.
-    """
-    tree = sqlglot.parse_one(sql, dialect=guard.DIALECT)
-    order = tree.args.get("order")
-    if order is None:
-        msg = "order_sensitive is true but the query has no ORDER BY"
-        raise ValueError(msg)
-
-    columns = [c.lower() for c in structure.output_columns(sql)]
-    indexes: list[int] = []
-    for ordered in order.expressions:
-        target = ordered.this
-        name = (
-            target.alias_or_name
-            if isinstance(target, (exp.Column, exp.Alias))
-            else target.sql(dialect=guard.DIALECT)
-        )
-        if name.lower() not in columns:
-            msg = f"ORDER BY {name!r} is not in the SELECT list ({', '.join(columns)})"
-            raise ValueError(msg)
-        indexes.append(columns.index(name.lower()))
-    return tuple(indexes)
 
 
 def check_guard(gold: goldset.GoldSet) -> list[str]:
@@ -178,7 +144,7 @@ def check_self_consistency(gold: goldset.GoldSet) -> list[str]:
             )
         if q.order_sensitive:
             try:
-                _order_column_indexes(q.reference_sql)
+                structure.order_columns(q.reference_sql)
             except ValueError as exc:
                 offenders.append(f"{q.id}: {exc}")
     return offenders
@@ -209,7 +175,11 @@ def check_no_tie_at_the_cut(gold: goldset.GoldSet, conn: psycopg.Connection) -> 
     for q in gold.questions:
         if not q.order_sensitive or not q.reference_sql:
             continue
-        columns = _order_column_indexes(q.reference_sql)
+        # The SAME key the comparator ties on: the leading ORDER BY column.
+        # Checking the full key (including the author's trailing tiebreak)
+        # hides a real ambiguity - four matches on 39 shots and a limit of
+        # 5 means which one makes the cut is arbitrary.
+        columns = structure.ranking_keys(q.reference_sql)
         rows = execute.run_sql(conn, q.reference_sql).rows
         if not rows:
             continue

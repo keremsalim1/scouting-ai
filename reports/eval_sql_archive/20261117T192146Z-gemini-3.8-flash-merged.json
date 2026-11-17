@@ -1,0 +1,1395 @@
+{
+  "generated_at": "2026-11-17T19:37:59.416779+00:00",
+  "suites": [
+    {
+      "run_id": "20261117T192146Z-gemini-3.8-flash",
+      "model": "gemini/gemini-3.8-flash",
+      "started_at": "2026-11-17T19:21:46.383505+00:00",
+      "seconds": 136.779,
+      "temperature_supported": false,
+      "reasoning_effort_supported": true,
+      "retries_used": 0,
+      "quota_exhausted": false,
+      "budget_reached": false,
+      "prompt_tokens": 354127,
+      "completion_tokens": 2493,
+      "cost_usd": 0.274944,
+      "scores": {
+        "scored": 36,
+        "total": 40,
+        "correct": 31,
+        "executes": 40,
+        "required_columns": 36,
+        "no_forbidden": 39,
+        "infra_errors": 0,
+        "reference_failures": 0,
+        "accuracy": 0.8611111111111112
+      },
+      "scores_by_category": {
+        "totals": {
+          "scored": 5,
+          "total": 5,
+          "correct": 5,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "rates": {
+          "scored": 6,
+          "total": 6,
+          "correct": 6,
+          "executes": 6,
+          "required_columns": 4,
+          "no_forbidden": 6,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "percentiles": {
+          "scored": 5,
+          "total": 5,
+          "correct": 4,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.8
+        },
+        "transfers": {
+          "scored": 5,
+          "total": 5,
+          "correct": 4,
+          "executes": 5,
+          "required_columns": 3,
+          "no_forbidden": 4,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.8
+        },
+        "teams": {
+          "scored": 5,
+          "total": 5,
+          "correct": 4,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.8
+        },
+        "match_detail": {
+          "scored": 5,
+          "total": 5,
+          "correct": 3,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.6
+        },
+        "filters": {
+          "scored": 5,
+          "total": 5,
+          "correct": 5,
+          "executes": 5,
+          "required_columns": 5,
+          "no_forbidden": 5,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "unanswerable": {
+          "scored": 0,
+          "total": 4,
+          "correct": 0,
+          "executes": 4,
+          "required_columns": 4,
+          "no_forbidden": 4,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": null
+        }
+      },
+      "results": [
+        {
+          "id": "totals-01",
+          "category": "totals",
+          "question": "Serie A'da en çok gol atan 7 oyuncu kim?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, goals, minutes_played, matches FROM football.player_season WHERE comp = 'ita' ORDER BY goals DESC LIMIT 7",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 10.924,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-01",
+          "category": "rates",
+          "question": "La Liga'da 90 dakikada en çok şut çeken 10 forvet",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, shots_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'esp' AND position_group = 'FW' AND minutes_played >= 900 ORDER BY shots_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.79,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-01",
+          "category": "percentiles",
+          "question": "La Liga forvetleri arasında npxG/90 yüzdeliği en yüksek 8 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS npxg_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'npxg_per90' AND comp = 'esp' AND position_group = 'FW' ORDER BY percentile DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.757,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "transfers-01",
+          "category": "transfers",
+          "question": "Sezon içinde kulüp değiştiren oyuncular arasında toplam golü en yüksek 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, goals, minutes_played, matches FROM football.player_season WHERE clubs > 1 ORDER BY goals DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": false,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "missing required column(s): clubs",
+          "seconds": 2.944,
+          "reference_rows": [
+            [
+              "Antoine Semenyo",
+              "17"
+            ],
+            [
+              "Karl Etta Eyong",
+              "7"
+            ],
+            [
+              "Eberechi Eze",
+              "7"
+            ],
+            [
+              "M'Bala Nzola",
+              "4"
+            ],
+            [
+              "Walid Cheddira",
+              "4"
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Antoine Semenyo",
+              "Bournemouth / Man City",
+              "17",
+              "3546",
+              "37"
+            ],
+            [
+              "Karl Etta Eyong",
+              "Levante / Villarreal",
+              "7",
+              "1888",
+              "33"
+            ],
+            [
+              "Eberechi Eze",
+              "Arsenal / Crystal Palace",
+              "7",
+              "2110",
+              "33"
+            ],
+            [
+              "M'Bala Nzola",
+              "Pisa / Sassuolo",
+              "4",
+              "1673",
+              "30"
+            ],
+            [
+              "Walid Cheddira",
+              "Lecce / Sassuolo",
+              "4",
+              "1379",
+              "33"
+            ]
+          ]
+        },
+        {
+          "id": "teams-01",
+          "category": "teams",
+          "question": "Premier League'de en çok şut çeken 5 takım",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, SUM(shots) AS total_shots FROM football.player_season_club WHERE comp = 'eng' GROUP BY team ORDER BY total_shots DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.834,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-01",
+          "category": "match_detail",
+          "question": "Premier League'de en çok gol atılan 7 maç hangileri?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT match_id, date, home_team, away_team, home_score, away_score, (home_score + away_score) AS total_goals FROM football.matches WHERE comp = 'eng' ORDER BY total_goals DESC LIMIT 7",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 10.222,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-01",
+          "category": "filters",
+          "question": "Premier League'de kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(DISTINCT player_id) AS total_players FROM football.player_season WHERE comp = 'eng' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 8.269,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "unanswerable-01",
+          "category": "unanswerable",
+          "question": "Premier League'de 90 dakikada en çok pres yapan 10 oyuncu kim?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS ball_recoveries_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'ball_recoveries_per90' AND comp = 'eng' ORDER BY value DESC LIMIT 10",
+          "executes": true,
+          "correct": null,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.055,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "totals-02",
+          "category": "totals",
+          "question": "La Liga'da en çok sarı kart gören 7 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, yellow_cards, minutes_played, matches FROM football.player_season WHERE comp = 'esp' ORDER BY yellow_cards DESC LIMIT 7",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.847,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "totals-03",
+          "category": "totals",
+          "question": "Premier League'de sezon boyunca en çok kilit pas atan 8 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, key_passes, minutes_played, matches FROM football.player_season WHERE comp = 'eng' ORDER BY key_passes DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.785,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "totals-04",
+          "category": "totals",
+          "question": "Serie A'da en fazla top kazanımı yapan 5 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, ball_recoveries, minutes_played, matches FROM football.player_season WHERE comp = 'ita' ORDER BY ball_recoveries DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.386,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "totals-05",
+          "category": "totals",
+          "question": "Premier League'de en çok dakika oynayan 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, matches FROM football.player_season WHERE comp = 'eng' ORDER BY minutes_played DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.393,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-02",
+          "category": "rates",
+          "question": "Premier League'de pas isabeti en yüksek 10 stoper",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS pass_pct, percentile, comparison_group_size FROM football.player_metrics WHERE comp = 'eng' AND position_group = 'CB' AND metric = 'pass_pct' ORDER BY value DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": false,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "missing required column(s): minutes_played",
+          "seconds": 1.979,
+          "reference_rows": [
+            [
+              "Ezri Konsa",
+              95.24940617577197
+            ],
+            [
+              "Victor Lindelöf",
+              94.20970266040689
+            ],
+            [
+              "Trevoh Chalobah",
+              92.88194444444444
+            ],
+            [
+              "Rúben Dias",
+              92.69535673839184
+            ],
+            [
+              "William Saliba",
+              92.6852288815479
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Ezri Konsa",
+              "Aston Villa",
+              95.24940617577197,
+              99.28571428571429,
+              70
+            ],
+            [
+              "Victor Lindelöf",
+              "Aston Villa",
+              94.20970266040689,
+              97.85714285714286,
+              70
+            ],
+            [
+              "Trevoh Chalobah",
+              "Chelsea",
+              92.88194444444444,
+              96.42857142857143,
+              70
+            ],
+            [
+              "Rúben Dias",
+              "Man City",
+              92.69535673839184,
+              95.0,
+              70
+            ],
+            [
+              "William Saliba",
+              "Arsenal",
+              92.6852288815479,
+              93.57142857142857,
+              70
+            ]
+          ]
+        },
+        {
+          "id": "rates-03",
+          "category": "rates",
+          "question": "Serie A'da 90 dakikada en çok hava topu kazanan 8 orta saha",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, aerials_won_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'ita' AND position_group = 'CM' AND minutes_played >= 900 ORDER BY aerials_won_per90 DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.251,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-04",
+          "category": "rates",
+          "question": "Which 10 Premier League players have the highest npxG per shot?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, npxg_per_shot, shots, minutes_played FROM football.player_per90 WHERE comp = 'eng' AND minutes_played >= 900 AND npxg_per_shot IS NOT NULL ORDER BY npxg_per_shot DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.416,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-05",
+          "category": "rates",
+          "question": "La Liga'da 90 dakikada en çok ilerletici pas atan 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, progressive_passes_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'esp' AND minutes_played >= 900 ORDER BY progressive_passes_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.152,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-06",
+          "category": "rates",
+          "question": "Serie A'da dribling başarı yüzdesi en yüksek 8 kanat oyuncusu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS dribble_pct, percentile, comparison_group_size FROM football.player_metrics WHERE comp = 'ita' AND position_group = 'W' AND metric = 'dribble_pct' ORDER BY value DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": false,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "missing required column(s): minutes_played",
+          "seconds": 2.014,
+          "reference_rows": [
+            [
+              "Mërgim Vojvoda",
+              48.148148148148145
+            ],
+            [
+              "Jonathan Rowe",
+              45.370370370370374
+            ],
+            [
+              "Martin Baturina",
+              41.07142857142857
+            ],
+            [
+              "Riccardo Orsolini",
+              38.55421686746988
+            ],
+            [
+              "Santiago Pierotti",
+              35.13513513513514
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Mërgim Vojvoda",
+              "Como",
+              48.148148148148145,
+              94.6078431372549,
+              102
+            ],
+            [
+              "Jonathan Rowe",
+              "Bologna",
+              45.370370370370374,
+              86.76470588235294,
+              102
+            ],
+            [
+              "Martin Baturina",
+              "Como",
+              41.07142857142857,
+              77.94117647058823,
+              102
+            ],
+            [
+              "Riccardo Orsolini",
+              "Bologna",
+              38.55421686746988,
+              59.31372549019608,
+              102
+            ],
+            [
+              "Santiago Pierotti",
+              "Lecce",
+              35.13513513513514,
+              39.21568627450981,
+              102
+            ]
+          ]
+        },
+        {
+          "id": "percentiles-02",
+          "category": "percentiles",
+          "question": "Serie A orta sahaları arasında kilit pas/90 yüzdeliği 80'in üstünde olanlar",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS key_passes_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'key_passes_per90' AND comp = 'ita' AND position_group = 'CM' AND percentile > 80 ORDER BY percentile DESC LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.784,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-03",
+          "category": "percentiles",
+          "question": "Premier League kalecileri arasında kurtarış/90 yüzdeliği en yüksek 5 kaleci",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS saves_per90, percentile, comparison_group_size FROM football.player_metrics WHERE comp = 'eng' AND position_group = 'GK' AND metric = 'saves_per90' ORDER BY percentile DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.169,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-04",
+          "category": "percentiles",
+          "question": "La Liga stoperleri arasında top kaybı metriğinde en iyi 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS dispossessed_per90, percentile, comparison_group_size FROM football.player_metrics WHERE comp = 'esp' AND position_group = 'CB' AND metric = 'dispossessed_per90' ORDER BY percentile DESC LIMIT 10",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 1, column 1: 'Duje Caleta-Car' is not in the candidate row",
+          "seconds": 1.664,
+          "reference_rows": [
+            [
+              "Duje Caleta-Car",
+              99.30555555555556
+            ],
+            [
+              "Yoel Lago",
+              97.91666666666667
+            ],
+            [
+              "Domingos Duarte",
+              96.52777777777777
+            ],
+            [
+              "Dani Calvo",
+              95.13888888888889
+            ],
+            [
+              "Antonio Rüdiger",
+              93.75
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Marcão",
+              "Sevilla",
+              0.0,
+              96.52777777777777,
+              72
+            ],
+            [
+              "David López",
+              "Mallorca",
+              0.0,
+              96.52777777777777,
+              72
+            ],
+            [
+              "Facundo Garcés",
+              "Deportivo Alaves",
+              0.0,
+              96.52777777777777,
+              72
+            ],
+            [
+              "Unai Elgezabal",
+              "Levante",
+              0.0,
+              96.52777777777777,
+              72
+            ],
+            [
+              "Rafa Marín",
+              "Villarreal",
+              0.0,
+              96.52777777777777,
+              72
+            ]
+          ]
+        },
+        {
+          "id": "percentiles-05",
+          "category": "percentiles",
+          "question": "Serie A kanat oyuncuları arasında xA/90 yüzdeliği 75 ve üstü olanlar",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS xa_per90, percentile, comparison_group_size FROM football.player_metrics WHERE metric = 'xa_per90' AND comp = 'ita' AND position_group = 'W' AND percentile >= 75 ORDER BY percentile DESC LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.694,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "transfers-02",
+          "category": "transfers",
+          "question": "Kulüp değiştiren oyuncuların her kulüpteki dakikaları nedir?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT psc.player, psc.team, psc.minutes_played, psc.matches FROM football.player_season_club AS psc JOIN football.player_season AS ps ON psc.player_id = ps.player_id AND psc.comp = ps.comp AND psc.season = ps.season WHERE ps.clubs > 1 ORDER BY psc.player, psc.minutes_played DESC LIMIT 200",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": false,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "forbidden structure(s): player_season; row count: expected 144, got 96",
+          "seconds": 1.969,
+          "reference_rows": [
+            [
+              "Adama Traoré",
+              "Fulham",
+              376
+            ],
+            [
+              "Adama Traoré",
+              "West Ham",
+              180
+            ],
+            [
+              "Ademola Lookman",
+              "Atalanta",
+              852
+            ],
+            [
+              "Ademola Lookman",
+              "Atletico",
+              672
+            ],
+            [
+              "Adrià Pedrosa",
+              "Elche",
+              1245
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Adama Traoré",
+              "Fulham",
+              376,
+              15
+            ],
+            [
+              "Adama Traoré",
+              "West Ham",
+              180,
+              9
+            ],
+            [
+              "Adrià Pedrosa",
+              "Elche",
+              1245,
+              26
+            ],
+            [
+              "Adrià Pedrosa",
+              "Sevilla",
+              13,
+              1
+            ],
+            [
+              "Alfon González",
+              "Villarreal",
+              385,
+              10
+            ]
+          ]
+        },
+        {
+          "id": "transfers-03",
+          "category": "transfers",
+          "question": "Premier League'de sezon içinde birden fazla kulüpte oynayan kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS player_count FROM football.player_season WHERE comp = 'eng' AND clubs > 1 LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.876,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "transfers-04",
+          "category": "transfers",
+          "question": "Kulüp değiştirenler arasında toplam asisti en yüksek 5 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, assists, minutes_played, matches FROM football.player_season WHERE clubs > 1 ORDER BY assists DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": false,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "missing required column(s): clubs",
+          "seconds": 1.551,
+          "reference_rows": [
+            [
+              "Giovane",
+              "5"
+            ],
+            [
+              "Hans Nicolussi Caviglia",
+              "4"
+            ],
+            [
+              "Antoine Semenyo",
+              "4"
+            ],
+            [
+              "Karl Etta Eyong",
+              "4"
+            ],
+            [
+              "Emil Holm",
+              "4"
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Giovane",
+              "Verona / Napoli",
+              "5",
+              "2011",
+              "33"
+            ],
+            [
+              "Hans Nicolussi Caviglia",
+              "Parma Calcio 1913 / Fiorentina",
+              "4",
+              "1583",
+              "26"
+            ],
+            [
+              "Antoine Semenyo",
+              "Bournemouth / Man City",
+              "4",
+              "3546",
+              "37"
+            ],
+            [
+              "Karl Etta Eyong",
+              "Levante / Villarreal",
+              "4",
+              "1888",
+              "33"
+            ],
+            [
+              "Emil Holm",
+              "Bologna / Juventus",
+              "4",
+              "974",
+              "18"
+            ]
+          ]
+        },
+        {
+          "id": "transfers-05",
+          "category": "transfers",
+          "question": "Sezon içinde iki farklı ligde oynayan oyuncular kimler?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player_id, player, COUNT(DISTINCT comp) AS n_comps, STRING_AGG(DISTINCT comp, ', ') AS comps, SUM(minutes_played) AS minutes_played FROM football.player_season GROUP BY player_id, player HAVING COUNT(DISTINCT comp) > 1 ORDER BY SUM(minutes_played) DESC LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.916,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "teams-02",
+          "category": "teams",
+          "question": "What is the total xG of each Serie A team?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, ROUND(CAST(SUM(xg) AS DECIMAL), 2) AS total_xg FROM football.player_season_club WHERE comp = 'ita' GROUP BY team ORDER BY total_xg DESC LIMIT 200",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 1, column 2: expected 59.103394804522395, got Decimal('59.10')",
+          "seconds": 1.984,
+          "reference_rows": [
+            [
+              "Inter",
+              74.43994088284671
+            ],
+            [
+              "Juventus",
+              68.83422989421524
+            ],
+            [
+              "Atalanta",
+              62.813358017243445
+            ],
+            [
+              "Como",
+              61.31147583713755
+            ],
+            [
+              "AC Milan",
+              59.103394804522395
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Inter",
+              "74.44"
+            ],
+            [
+              "Juventus",
+              "68.83"
+            ],
+            [
+              "Atalanta",
+              "62.81"
+            ],
+            [
+              "Como",
+              "61.31"
+            ],
+            [
+              "AC Milan",
+              "59.10"
+            ]
+          ]
+        },
+        {
+          "id": "teams-03",
+          "category": "teams",
+          "question": "Premier League'de en çok sarı kart gören 5 takım",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, SUM(yellow_cards) AS yellow_cards FROM football.player_season_club WHERE comp = 'eng' GROUP BY team ORDER BY yellow_cards DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.891,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "teams-04",
+          "category": "teams",
+          "question": "La Liga'da en çok penaltı kullanan 4 takım",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, SUM(penalties_taken) AS penalties_taken FROM football.player_season_club WHERE comp = 'esp' GROUP BY team ORDER BY penalties_taken DESC LIMIT 4",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.917,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "teams-05",
+          "category": "teams",
+          "question": "Serie A'da takım başına toplam asist, en yüksek 5 takım",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, SUM(assists) AS total_assists FROM football.player_season_club WHERE comp = 'ita' GROUP BY team ORDER BY total_assists DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.909,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-02",
+          "category": "match_detail",
+          "question": "Which 5 La Liga matches had the highest attendance?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT home_team, away_team, date, attendance, venue FROM football.matches WHERE comp = 'esp' AND attendance IS NOT NULL ORDER BY attendance DESC LIMIT 5",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 1, column 2: 'Real Madrid' is not in the candidate row",
+          "seconds": 2.605,
+          "reference_rows": [
+            [
+              "2025-10-26",
+              "Real Madrid",
+              "Barcelona",
+              78107
+            ],
+            [
+              "2026-03-22",
+              "Real Madrid",
+              "Atletico",
+              77964
+            ],
+            [
+              "2025-10-04",
+              "Real Madrid",
+              "Villarreal",
+              75216
+            ],
+            [
+              "2026-01-04",
+              "Real Madrid",
+              "Real Betis",
+              75190
+            ],
+            [
+              "2025-11-01",
+              "Real Madrid",
+              "Valencia",
+              74796
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Real Madrid",
+              "Barcelona",
+              "2025-10-26",
+              78107,
+              "Santiago Bernabéu"
+            ],
+            [
+              "Real Madrid",
+              "Atletico",
+              "2026-03-22",
+              77964,
+              "Estadio Bernabéu"
+            ],
+            [
+              "Real Madrid",
+              "Villarreal",
+              "2025-10-04",
+              75216,
+              "Santiago Bernabéu"
+            ],
+            [
+              "Real Madrid",
+              "Real Betis",
+              "2026-01-04",
+              75190,
+              "Estadio Bernabéu"
+            ],
+            [
+              "Real Madrid",
+              "Valencia",
+              "2025-11-01",
+              74796,
+              "Santiago Bernabéu"
+            ]
+          ]
+        },
+        {
+          "id": "match_detail-03",
+          "category": "match_detail",
+          "question": "Serie A'da en çok şut çekilen 6 maç",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT match_id, date, home_team, away_team, n_shots FROM football.matches WHERE comp = 'ita' ORDER BY n_shots DESC LIMIT 6",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.868,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-04",
+          "category": "match_detail",
+          "question": "Premier League'de xG'si en yüksek 10 şut kime ait?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT p.player, t.team, s.xg, s.minute, s.result, s.is_goal FROM football.shots AS s LEFT JOIN football.players AS p ON s.player_id = p.player_id LEFT JOIN football.teams AS t ON s.team_id = t.team_id WHERE s.comp = 'eng' ORDER BY s.xg DESC LIMIT 10",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "row 1, column 1: 'David Brooks' is not in the candidate row",
+          "seconds": 1.945,
+          "reference_rows": [
+            [
+              "David Brooks",
+              0.951172
+            ],
+            [
+              "Casemiro",
+              0.935379
+            ],
+            [
+              "Tomás Soucek",
+              0.934048
+            ],
+            [
+              "Callum Wilson",
+              0.91099
+            ],
+            [
+              "Kyle Walker-Peters",
+              0.909612
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Brajan Gruda",
+              "Brighton",
+              null,
+              24,
+              "MissedShots",
+              false
+            ],
+            [
+              "Bart Verbruggen",
+              "Brighton",
+              null,
+              20,
+              "Goal",
+              true
+            ],
+            [
+              "Gabriel Gudmundsson",
+              "Leeds",
+              null,
+              93,
+              "Goal",
+              true
+            ],
+            [
+              "Jan Paul van Hecke",
+              "Brighton",
+              null,
+              81,
+              "Goal",
+              true
+            ],
+            [
+              "Ethan Pinnock",
+              "Brentford",
+              null,
+              49,
+              "Goal",
+              true
+            ]
+          ]
+        },
+        {
+          "id": "match_detail-05",
+          "category": "match_detail",
+          "question": "En uzun 10 tamamlanmış pas kime ait?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT p.player, t.team, pa.pass_length, pa.comp, pa.season FROM football.passes AS pa JOIN football.players AS p ON pa.player_id = p.player_id JOIN football.teams AS t ON pa.team_id = t.team_id WHERE pa.is_completed = TRUE ORDER BY pa.pass_length DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 2.779,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-02",
+          "category": "filters",
+          "question": "Serie A'da stoper olarak sınıflanan kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS cb_count FROM football.position_map WHERE comp = 'ita' AND position_group = 'CB' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 2.521,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-03",
+          "category": "filters",
+          "question": "2025/26 sezonunda La Liga'da kaç maç oynandı?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS matches_played FROM football.matches WHERE comp = 'esp' AND season = '2526' AND status_code IS NOT NULL LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.275,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-04",
+          "category": "filters",
+          "question": "Lig bazında, pozisyonu başlangıç dizilişlerinden belirlenmiş kaç kanat beki var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT comp, COUNT(*) AS count FROM football.position_map WHERE position_source = 'starts' AND position_group = 'FB' GROUP BY comp ORDER BY comp LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": true,
+          "reason": "",
+          "seconds": 1.733,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "filters-05",
+          "category": "filters",
+          "question": "Premier League'de geniş pozisyon grubu hücum olan kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(*) AS n_players FROM football.player_season WHERE comp = 'eng' AND position_group_broad = 'ATT' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.256,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "unanswerable-02",
+          "category": "unanswerable",
+          "question": "En çok ilerletici taşıma yapan 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, dribbles_completed, minutes_played, matches FROM football.player_season ORDER BY dribbles_completed DESC LIMIT 10",
+          "executes": true,
+          "correct": null,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.011,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "unanswerable-03",
+          "category": "unanswerable",
+          "question": "2026/27 sezonunda en çok gol atan oyuncu kim?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, goals, minutes_played, matches FROM football.player_season ORDER BY goals DESC LIMIT 1",
+          "executes": true,
+          "correct": null,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.039,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "unanswerable-04",
+          "category": "unanswerable",
+          "question": "Oyuncuların maç başına koştuğu mesafe kaç kilometre?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, minutes_played, matches FROM football.player_season ORDER BY minutes_played DESC LIMIT 10",
+          "executes": true,
+          "correct": null,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.755,
+          "reference_rows": [],
+          "candidate_rows": []
+        }
+      ]
+    }
+  ]
+}

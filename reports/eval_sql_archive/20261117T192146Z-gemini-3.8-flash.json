@@ -1,0 +1,408 @@
+{
+  "generated_at": "2026-11-17T19:22:13.116310+00:00",
+  "suites": [
+    {
+      "run_id": "20261117T192146Z-gemini-3.8-flash",
+      "model": "gemini/gemini-3.8-flash",
+      "started_at": "2026-11-17T19:21:46.383505+00:00",
+      "seconds": 26.733,
+      "temperature_supported": false,
+      "reasoning_effort_supported": true,
+      "retries_used": 0,
+      "quota_exhausted": false,
+      "budget_reached": false,
+      "prompt_tokens": 56663,
+      "completion_tokens": 383,
+      "cost_usd": 0.0439335,
+      "scores": {
+        "scored": 7,
+        "total": 8,
+        "correct": 6,
+        "executes": 8,
+        "required_columns": 7,
+        "no_forbidden": 8,
+        "infra_errors": 0,
+        "reference_failures": 0,
+        "accuracy": 0.8571428571428571
+      },
+      "scores_by_category": {
+        "totals": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "rates": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "percentiles": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "transfers": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 0,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "teams": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "match_detail": {
+          "scored": 1,
+          "total": 1,
+          "correct": 0,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 0.0
+        },
+        "filters": {
+          "scored": 1,
+          "total": 1,
+          "correct": 1,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": 1.0
+        },
+        "unanswerable": {
+          "scored": 0,
+          "total": 1,
+          "correct": 0,
+          "executes": 1,
+          "required_columns": 1,
+          "no_forbidden": 1,
+          "infra_errors": 0,
+          "reference_failures": 0,
+          "accuracy": null
+        }
+      },
+      "results": [
+        {
+          "id": "totals-01",
+          "category": "totals",
+          "question": "Serie A'da en çok gol atan 7 oyuncu kim?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, goals, minutes_played, matches FROM football.player_season WHERE comp = 'ita' ORDER BY goals DESC LIMIT 7",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 10.27,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "rates-01",
+          "category": "rates",
+          "question": "La Liga'da 90 dakikada en çok şut çeken 10 forvet",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, shots_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'esp' AND position_group = 'FW' AND minutes_played >= 900 ORDER BY shots_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.736,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "percentiles-01",
+          "category": "percentiles",
+          "question": "La Liga forvetleri arasında npxG/90 yüzdeliği en yüksek 8 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, value AS npxg_per90, percentile, comparison_group_size FROM football.player_metrics WHERE comp = 'esp' AND position_group = 'FW' AND metric = 'npxg_per90' ORDER BY percentile DESC LIMIT 8",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.57,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "transfers-01",
+          "category": "transfers",
+          "question": "Sezon içinde kulüp değiştiren oyuncular arasında toplam golü en yüksek 10 oyuncu",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, goals, minutes_played, matches FROM football.player_season WHERE clubs > 1 ORDER BY goals DESC LIMIT 10",
+          "executes": true,
+          "correct": true,
+          "required_columns": false,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "missing required column(s): clubs",
+          "seconds": 2.292,
+          "reference_rows": [
+            [
+              "Antoine Semenyo",
+              "17"
+            ],
+            [
+              "Karl Etta Eyong",
+              "7"
+            ],
+            [
+              "Eberechi Eze",
+              "7"
+            ],
+            [
+              "M'Bala Nzola",
+              "4"
+            ],
+            [
+              "Walid Cheddira",
+              "4"
+            ]
+          ],
+          "candidate_rows": [
+            [
+              "Antoine Semenyo",
+              "Bournemouth / Man City",
+              "17",
+              "3546",
+              "37"
+            ],
+            [
+              "Karl Etta Eyong",
+              "Levante / Villarreal",
+              "7",
+              "1888",
+              "33"
+            ],
+            [
+              "Eberechi Eze",
+              "Arsenal / Crystal Palace",
+              "7",
+              "2110",
+              "33"
+            ],
+            [
+              "M'Bala Nzola",
+              "Pisa / Sassuolo",
+              "4",
+              "1673",
+              "30"
+            ],
+            [
+              "Walid Cheddira",
+              "Lecce / Sassuolo",
+              "4",
+              "1379",
+              "33"
+            ]
+          ]
+        },
+        {
+          "id": "teams-01",
+          "category": "teams",
+          "question": "Premier League'de en çok şut çeken 5 takım",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT team, SUM(shots) AS shots FROM football.player_season_club WHERE comp = 'eng' GROUP BY team ORDER BY shots DESC LIMIT 5",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 1.896,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "match_detail-01",
+          "category": "match_detail",
+          "question": "Premier League'de en çok gol atılan 5 maç hangileri?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT match_id, date, home_team, away_team, home_score, away_score, (home_score + away_score) AS total_goals FROM football.matches WHERE comp = 'eng' ORDER BY total_goals DESC LIMIT 5",
+          "executes": true,
+          "correct": false,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "row 3, column 1: expected datetime.date(2025, 12, 3), got datetime.date(2026, 1, 7)",
+          "seconds": 2.702,
+          "reference_rows": [
+            [
+              "2025-12-02",
+              "Fulham",
+              "Man City",
+              9
+            ],
+            [
+              "2025-12-15",
+              "Man Utd",
+              "Bournemouth",
+              8
+            ],
+            [
+              "2025-12-03",
+              "Brighton",
+              "Aston Villa",
+              7
+            ],
+            [
+              "2026-01-07",
+              "Newcastle",
+              "Leeds",
+              7
+            ],
+            [
+              "2026-02-28",
+              "Burnley",
+              "Brentford",
+              7
+            ]
+          ],
+          "candidate_rows": [
+            [
+              1903251,
+              "2025-12-02",
+              "Fulham",
+              "Man City",
+              4,
+              5,
+              9
+            ],
+            [
+              1903490,
+              "2025-12-15",
+              "Man Utd",
+              "Bournemouth",
+              4,
+              4,
+              8
+            ],
+            [
+              1903285,
+              "2026-01-07",
+              "Newcastle",
+              "Leeds",
+              4,
+              3,
+              7
+            ],
+            [
+              1903249,
+              "2025-12-03",
+              "Brighton",
+              "Aston Villa",
+              3,
+              4,
+              7
+            ],
+            [
+              1903402,
+              "2026-02-28",
+              "Burnley",
+              "Brentford",
+              3,
+              4,
+              7
+            ]
+          ]
+        },
+        {
+          "id": "filters-01",
+          "category": "filters",
+          "question": "Premier League'de kaç oyuncu var?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT COUNT(DISTINCT player_id) AS player_count FROM football.player_season WHERE comp = 'eng' LIMIT 200",
+          "executes": true,
+          "correct": true,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.181,
+          "reference_rows": [],
+          "candidate_rows": []
+        },
+        {
+          "id": "unanswerable-01",
+          "category": "unanswerable",
+          "question": "Premier League'de 90 dakikada en çok pres yapan 10 oyuncu kim?",
+          "model": "gemini/gemini-3.8-flash",
+          "generated_sql": "SELECT player, teams, ball_recoveries_per90, minutes_played, matches FROM football.player_per90 WHERE comp = 'eng' AND minutes_played >= 900 ORDER BY ball_recoveries_per90 DESC LIMIT 10",
+          "executes": true,
+          "correct": null,
+          "required_columns": true,
+          "no_forbidden": true,
+          "infra_error": false,
+          "reference_failed": false,
+          "repairs_used": 0,
+          "structure_differs": false,
+          "reason": "",
+          "seconds": 2.087,
+          "reference_rows": [],
+          "candidate_rows": []
+        }
+      ]
+    }
+  ]
+}

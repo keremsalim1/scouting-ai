@@ -28,12 +28,26 @@ from football_ai.data.db import ALLOWED_RELATIONS, SCHEMA
 
 # Columns whose distinct values are few enough to list, and important enough
 # that guessing them produces silently empty results.
+# KNOWN LIMITATION, and it contradicts D-023's own principle that the schema
+# description comes from the catalog rather than from a hand-maintained list:
+# this map IS hand-maintained, so a low-cardinality column nobody added stays
+# invisible and the model guesses at it. `status_code` was exactly that.
+# The proper fix is to discover these from the catalog - `pg_stats.n_distinct`
+# is cheap enough to pre-filter with, so only genuinely small columns get a
+# `count(distinct)` and `passes` (1.08M rows) is never scanned. Deferred
+# rather than done here because it belongs with the day 5 generator, not with
+# the day 6 benchmark that found it.
 ENUM_LIKE_COLUMNS: dict[str, tuple[str, ...]] = {
     "player_season": ("comp", "season", "position_group", "position_group_broad"),
     "player_per90": ("comp", "season", "position_group", "position_source"),
     "player_metrics": ("comp", "metric", "position_group", "comparison_scope", "unit", "category"),
     "position_map": ("comp", "position", "position_group", "position_source"),
-    "matches": ("comp", "season"),
+    # `status_code` carries a single value (6) across all 1 140 matches, and
+    # day 6 caught the model inventing `status_code = 3` and returning zero
+    # rows for "how many La Liga matches were played". An integer that looks
+    # like a status enum and whose values are not spelled out is an invitation
+    # to guess.
+    "matches": ("comp", "season", "status_code", "max_period"),
     "data_quality": ("comp", "metric", "status"),
     "data_quality_features": ("feature", "status"),
 }

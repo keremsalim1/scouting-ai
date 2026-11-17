@@ -870,3 +870,36 @@ Neden birlikte: referansı tek başına küçültmek durumu kötüleştirir. Ref
 **Bilinen sınırlama.** Tolerans (bağıl 1e-6) sunum tercihini reddediyor: `teams-02` xG'yi iki ondalığa yuvarlayıp yanlış sayılıyor. Toleransı genel olarak gevşetmek gerçek hataları gizlerdi (per-90'da 5,77 ile 5,8 farkı önemlidir), o yüzden tolerans duruyor ve bu soru bilinen bir yanlış-negatif olarak kayıtlı.
 
 **Tarih.** 2026-11-17
+
+---
+
+## D-030: Benchmark güvenilir olduktan sonra bulduğu ilk üç şey prompt'un açıklarıydı
+
+**Bağlam.** Hakem düzeltildikten sonra (D-029) doğruluk %86,1 oldu ve kalan hatalar artık ölçüm hatası değil, gerçek bulgu olarak okunabilir hale geldi. Üçü prompt/şema açığı çıktı. Üçü de **satırları okumakla** bulundu, skora bakmakla değil — bu, Gün 6 boyunca tekrarlayan tek yöntemdi.
+
+**Bulgular ve düzeltmeler.**
+
+1. **Örnek kuraldan güçlüdür — ve benim örneğim kendi kuralımı ihlal ediyordu.** Her iki `player_metrics` few-shot'u `percentile, comparison_group_size` döndürüp `minutes_played`'i atlıyordu. Prompt'ta "örneklemi döndür" kuralı yazılı olmasına rağmen **iki model de örneği kopyaladı**: `rates` kategorisinde 6/6 doğru ama **2/6 zorunlu kolon**. D-025 bunu zaten yazmıştı ("kural + örnek birlikte verilir; örnek daha güçlüdür"); ben kuralı yazıp örneği düzeltmeyi atlamıştım. Örnekler düzeltildikten sonra `rates` kolon skoru **6/6**.
+
+2. **Kural fazla dar kapsamlıydı.** NULL uyarısı "**oran** sıralarken `is not null` ekle" diyordu. `shots.xg` bir oran değil; model kuralı haklı olarak uygulamadı ve "xG'si en yüksek şut" sorusuna değersiz satırlarla cevap verdi. Postgres `desc` sıralamada NULL'ları başa koyuyor. Kural her kolona genişletildi.
+
+3. **Listelenmemiş kolon değeri.** `status_code` 1140 maçın hepsinde tek bir değer taşıyor (`6`), ama `ENUM_LIKE_COLUMNS` haritasında yoktu, yani prompt bunu hiç söylemiyordu. Model `status_code = 3` uydurdu ve "La Liga'da kaç maç oynandı" sorusuna **0** cevabını verdi — sessiz boş sonuç, hatadan beteri. **Asıl kusur haritanın elle tutulması:** bu, D-023'ün kendi ilkesiyle ("şema açıklaması katalogdan üretilir, elle yazılmaz") doğrudan çelişiyor. `status_code` ve `max_period` eklendi; doğru çözüm `pg_stats.n_distinct` ile katalogdan keşif (böylece `passes`'ın 1,08M satırı hiç taranmaz) ve bu koda yorum olarak takip işi diye yazıldı.
+
+**Bir bulgu da gold set'in kendi hatasıydı.** `percentiles-04` "top kaybı metriğinde en iyi" diye soruyordu; `config/metrics.yaml`'da iki metriğin Türkçe etiketi de bu anlama geliyor — `miscontrols_per90` ("Kötü kontrol") ve `dispossessed_per90` ("Top kaptırma"). Model ikincisini seçti ve haklıydı. Soru metriğin kendi etiketini kullanacak şekilde yazıldı; böylece **sözde sınadığı ters-metrik tuzağı ilk kez gerçekten sınandı** ve geçti. Ders: soru metni, projenin kendi sözlüğünden (`metrics.yaml` etiketleri) seçilmeli, serbest Türkçeden değil.
+
+**Sonuç/ölçüm.** %86,1 → **%91,7 (33/36)**. Kategori bazında: `percentiles` 4/5 → 5/5, `rates` zorunlu kolon 4/6 → 6/6, `filters-03` ve `match_detail-04` kurtarıldı. Kalan üç hata: bir gerçek SQL hatası (`rates-03`), bir yuvarlama (`teams-02`, bilinen yanlış-negatif), bir farklı sıralama (`match_detail-02`).
+
+**Yan gözlem — diferansiyel sinyal geri döndü.** Aynı değişiklikler zayıf modelde 29/36 → 26/36 yaptı. Tek koşu olduğu için gürültü olabilir, ama iki model arasındaki fark 2 sorudan 7 soruya çıktı; D-025'in dayandığı sinyal zayıflamak yerine güçlendi. Prompt'u sıkılaştırmanın güçlü modele daha çok yardım ettiği, zayıf modeli ise bir miktar zorladığı okuması makul.
+
+**Gün 6'nın tamamının dekompozisyonu**, çünkü yalnız bir aşaması modelle ilgili:
+
+| Aşama | Doğruluk | Ne değişti |
+| --- | --- | --- |
+| İlk gerçek koşu | %66,7 | — |
+| Hakem düzeltildi (3 kusur) | %80,6 | **+13,9 puan, model aynı** |
+| `3.6-flash` → `3.8-flash` | %86,1 | +5,5 puan, fiyat birebir aynı |
+| Prompt düzeltildi (3 açık) | **%91,7** | +5,6 puan |
+
+En büyük tek kazanç **benchmark'ı düzeltmekten** geldi, test edilen sistemden değil. Toplam sağlayıcı harcaması, tüm tekrar koşular dahil ~$1,85.
+
+**Tarih.** 2026-11-17

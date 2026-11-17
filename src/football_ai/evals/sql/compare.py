@@ -122,13 +122,42 @@ def _rows_equal(reference: tuple, candidate: tuple, mapping: tuple[int, ...]) ->
     return None
 
 
+def _tie_blocks(rows: list[tuple], tie_columns: tuple[int, ...]) -> list[tuple[int, int]]:
+    """Consecutive row ranges that share the same ranking-key values.
+
+    Rows inside such a block are tied, so their relative order is the gold set
+    author's habit rather than part of the answer. "The 5 highest-scoring
+    matches" has three matches on 7 goals; which of the three is listed first
+    is not something the question asks for.
+    """
+    blocks: list[tuple[int, int]] = []
+    start = 0
+    for index in range(1, len(rows) + 1):
+        same = index < len(rows) and all(
+            values_equal(rows[index][c], rows[start][c])
+            for c in tie_columns
+            if c < len(rows[index]) and c < len(rows[start])
+        )
+        if not same:
+            blocks.append((start, index))
+            start = index
+    return blocks
+
+
 def compare(
     reference: list[tuple],
     candidate: list[tuple],
     *,
     order_sensitive: bool,
+    tie_columns: tuple[int, ...] = (),
 ) -> Comparison:
-    """Is `candidate` the same answer as `reference`?"""
+    """Is `candidate` the same answer as `reference`?
+
+    `tie_columns` names the reference columns a ranking is ordered by. Rows
+    that share those values form a block whose internal order is free, so a
+    correct ranking is not failed by an arbitrary tiebreak. Ignored when the
+    question is a set (`order_sensitive=False`), where order never mattered.
+    """
     if len(reference) != len(candidate):
         return Comparison(
             equal=False,
@@ -153,7 +182,10 @@ def compare(
     # ranking the first row must be the first row, so only that pairing is
     # tried. For a set, any candidate row may correspond to the reference's
     # first, so each is tried until one matches.
-    probes = candidate[:1] if order_sensitive else candidate
+    # With tie blocks the candidate's first row may legitimately be a
+    # different member of the first block, so every row is a probe there too.
+    # The mapping is still verified against every row afterwards.
+    probes = candidate[:1] if order_sensitive and not tie_columns else candidate
     mapping = next(
         (m for row in probes if (m := _column_mapping(reference[0], row)) is not None),
         None,
@@ -173,6 +205,13 @@ def compare(
     if not order_sensitive:
         left = sorted(left, key=_sort_key)
         right = sorted(right, key=_sort_key)
+    elif tie_columns:
+        # Sort both sides within each tie block. The blocks come from the
+        # reference, so a candidate that moved a row across a block boundary
+        # still fails: that is a ranking error, not a tie.
+        for start, end in _tie_blocks(left, tie_columns):
+            left[start:end] = sorted(left[start:end], key=_sort_key)
+            right[start:end] = sorted(right[start:end], key=_sort_key)
 
     for position, (expected_row, actual_row) in enumerate(zip(left, right, strict=True), start=1):
         difference = _rows_equal(expected_row, actual_row, tuple(range(len(expected_row))))

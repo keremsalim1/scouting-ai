@@ -93,7 +93,7 @@ validate:
 # one: gemini-3.8-flash returned 503 on 2 of 5 questions when this was wired
 # up, which is an unusable measurement. Override per run rather than editing a
 # recipe:  make eval-sql-both MODEL_STRONG=gemini/gemini-3.5-flash
-MODEL_STRONG ?= gemini/gemini-3.6-flash
+MODEL_STRONG ?= gemini/gemini-3.8-flash
 MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
 
 eval-sql:
