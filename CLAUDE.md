@@ -144,4 +144,4 @@ Gerekçeler D-026…D-029. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kate
 - [x] Gün 3: position_map + season/per-90 view'ları — per-90 OpenPlay ile farkı 0
 - [x] Gün 4: `config/metrics.yaml` (38 metrik) + yüzdelikler — 10 elle kontrol doğru, 182 test yeşil
 - [x] Gün 5: güvenli text-to-SQL — 36 saldırgan vakada zararlı sorgu 0, uçtan uca çalışıyor
-- [x] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI — **%86,1 (31/36), eşik %70 geçildi**; `gemini-3.8-flash`, 0 altyapı hatası, ölçülen maliyet $0,27. 391 birim + 124 db testi yeşil, gold set 36/36. Onarım döngüsü: 40/40 ilk denemede geçti, onarım hiç çalışmadı. **Hakemde üç kusur bulunup düzeltildi (D-029): %66,7 → %86,1, model değişmeden.**
+- [x] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI — **%91,7 (33/36), eşik %70**; `gemini-3.8-flash`, 112 sn, 0 altyapı hatası, $0,23. 394 birim + 124 db testi yeşil, gold set 36/36. Yol: %66,7 → %80,6 (hakemde 3 kusur) → %86,1 (model 3.6→3.8, fiyat aynı) → %91,7 (prompt'ta 3 açık). **En büyük kazanç benchmark'ı düzeltmekten geldi, modelden değil.** Onarım döngüsü: 40/40 ilk denemede, onarım hiç çalışmadı.
