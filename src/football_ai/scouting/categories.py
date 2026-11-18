@@ -5,12 +5,17 @@ not a scouting-relevant skill axis. The mapping itself is a football-logic
 default (see docs/superpowers/specs/2026-11-18-day7-player-profile-design.md),
 not derived from data, so it lives here as a plain constant rather than in
 config/metrics.yaml, which is validated against the actual metric set.
+
+GK carries three categories, not the two in the original design sketch:
+mplsoccer's `Radar` refuses fewer than 3 axes, and "duels" (aerial
+contests, fouls won, miscontrols, dispossessed) is meaningful for a
+keeper too, so it fills the slot rather than an arbitrary filler.
 """
 
 from __future__ import annotations
 
 POSITION_CATEGORIES: dict[str, tuple[str, ...]] = {
-    "GK": ("goalkeeping", "passing"),
+    "GK": ("goalkeeping", "passing", "duels"),
     "CB": ("defending", "duels", "passing", "progression"),
     "FB": ("defending", "duels", "passing", "progression", "creation"),
     "DM": ("defending", "duels", "passing", "progression"),

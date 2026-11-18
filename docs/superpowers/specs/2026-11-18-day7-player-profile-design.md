@@ -147,7 +147,7 @@ human partner to skim):
 
 | position_group | categories |
 |---|---|
-| GK | goalkeeping, passing |
+| GK | goalkeeping, passing, duels |
 | CB | defending, duels, passing, progression |
 | FB | defending, duels, passing, progression, creation |
 | DM | defending, duels, passing, progression |
