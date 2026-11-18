@@ -26,6 +26,11 @@ _POSSESSION_UNKNOWN_NOTE = (
     "defending metrics are not possession-adjusted"
 )
 
+# PAdj scales action *volume* with how much the ball the opponent had; it is
+# meaningless for a success rate (tackle_pct does not get easier because the
+# opponent had the ball more), so only per90/count metrics are adjusted.
+_POSSESSION_ADJUSTABLE_UNITS = {"per90", "count"}
+
 
 class PlayerNotFoundError(Exception):
     """Raised when (player_id, comp, season) has no row in player_season."""
@@ -59,7 +64,7 @@ class PlayerProfile(BaseModel):
     position_group: str
     position_group_broad: str
     position_source: str
-    position_share: float
+    position_share: float | None
     minutes_played: int
     matches: int
     min_minutes_threshold: int
@@ -107,7 +112,7 @@ def player_profile(
     for row in metric_rows:
         possession_adjusted_value = (
             possession_adjust(row["value"], avg_opponent_possession_pct)
-            if row["category"] == "defending"
+            if row["category"] == "defending" and row["unit"] in _POSSESSION_ADJUSTABLE_UNITS
             else None
         )
         metric_value = MetricValue(
@@ -215,30 +220,31 @@ def _below_threshold_metric_rows(
     if per90_row is None:
         return []
 
-    rows: list[dict] = []
     with conn.cursor() as cur:
-        for metric in metrics_config.metrics:
-            value = per90_row.get(metric.source_column)
-            if value is None:
-                continue
-            cur.execute(
-                "select comparison_group_size from football.player_metrics "
-                "where comp = %s and position_group = %s and metric = %s limit 1",
-                (comp, position_group, metric.key),
-            )
-            group_row = cur.fetchone()
-            rows.append(
-                {
-                    "metric": metric.key,
-                    "label": metric.label,
-                    "unit": metric.unit,
-                    "category": metric.category,
-                    "higher_is_better": metric.higher_is_better,
-                    "value": value,
-                    "percentile": None,
-                    "comparison_scope": "below_minutes_threshold",
-                    "comparison_comp": None,
-                    "comparison_group_size": group_row[0] if group_row else 0,
-                }
-            )
+        cur.execute(
+            "select metric, max(comparison_group_size) from football.player_metrics "
+            "where comp = %s and position_group = %s group by metric",
+            (comp, position_group),
+        )
+        group_sizes: dict[str, int] = dict(cur.fetchall())
+
+    rows: list[dict] = []
+    for metric in metrics_config.metrics:
+        value = per90_row.get(metric.source_column)
+        if value is None:
+            continue
+        rows.append(
+            {
+                "metric": metric.key,
+                "label": metric.label,
+                "unit": metric.unit,
+                "category": metric.category,
+                "higher_is_better": metric.higher_is_better,
+                "value": value,
+                "percentile": None,
+                "comparison_scope": "below_minutes_threshold",
+                "comparison_comp": None,
+                "comparison_group_size": group_sizes.get(metric.key, 0),
+            }
+        )
     return rows
