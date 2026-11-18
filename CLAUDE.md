@@ -137,6 +137,16 @@ Gerekçeler D-026…D-029. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kate
 - **`required_columns` sorulan ölçüyü içermez**, yalnız kimlik ve örneklem bağlamını (`player`/`team`, `minutes_played`, `percentile`, `comparison_group_size`). Ölçünün varlığını kolon sayısı kontrolü garanti ediyor; adını şart koşmak hakemin "kolon adları önemsizdir" ilkesiyle çelişir ve takma ad polisliğine dönüşür.
 - **Top-N istemeyen soruya keyfi `LIMIT` koymayın.** "80'in üstünde olanlar" bir kümedir; referansı kırpmak tam cevabı yanlış işaretler ve `order_sensitive` küme sorusunda eşitlik sırasını hakem yapar.
 
+## Profil ve radar (Gün 7)
+Gerekçe D-031.
+- `player_profile(conn, player_id, comp, season)` → `PlayerProfile` (Pydantic, API'ye hazır JSON). `src/football_ai/scouting/profile.py`.
+- **Possession verisi yok, touches payından türetildi.** `player_match_stats`'ta `possession` kolonu yok; proxy iki takımın maçtaki `touches` toplamının payı (`infra/migrations/004_possession.sql`: `team_match_touches` → `match_possession` → `player_possession`). FBref/Wyscout'un tracking verisi olmadığında kullandığı aynı proxy.
+- **PAdj yalnızca `defending` kategorisinde:** `PAdj = raw_per90 × 50 / avg_opponent_possession_pct`, oyuncunun oynadığı maçlardaki rakip possession'ının dakika-ağırlıklı ortalaması. `duels` ve diğer kategoriler düzeltilmez — kullanıcı talebi savunma eylemleriyle sınırlı.
+- **900 dakika altı oyuncu da tam profil alır.** `player_metrics` (Gün 4) bu oyuncuları hiç içermiyor; `player_per90`'dan ham değerlere düşülür, her metrikte `comparison_scope = 'below_minutes_threshold'`, `percentile = null`, ve açık bir `sample_warning` metni — sessizce boş/eksik profil dönmez.
+- Radar eksenleri pozisyona özel: `src/football_ai/scouting/categories.py`'deki `POSITION_CATEGORIES`, `discipline` hariç. **mplsoccer'ın `Radar`'ı 3'ten az eksen kabul etmiyor** — GK için tasarımdaki iki kategori (goalkeeping, passing) üçe çıkarıldı (+ duels, hava topu mücadeleleri kalecide de anlamlı).
+- Kategori skoru = o kategorideki metriklerin percentile'larının **basit ortalaması**; hepsi null ise skor null, 0 değil (`src/football_ai/scouting/calc.py`).
+- Ölçüm: `player_profile` çağrısı ~328 ms (James Milner, DM, Premier League 2025/26) — kabul kriteri <1 sn.
+
 ## Durum
 - [x] Gün 0: plan onaylandı
 - [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`
@@ -145,3 +155,4 @@ Gerekçeler D-026…D-029. Gold set: `evals/sql/questions.yaml` (40 soru, 8 kate
 - [x] Gün 4: `config/metrics.yaml` (38 metrik) + yüzdelikler — 10 elle kontrol doğru, 182 test yeşil
 - [x] Gün 5: güvenli text-to-SQL — 36 saldırgan vakada zararlı sorgu 0, uçtan uca çalışıyor
 - [x] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI — **%91,7 (33/36), eşik %70**; `gemini-3.8-flash`, 112 sn, 0 altyapı hatası, $0,23. 394 birim + 124 db testi yeşil, gold set 36/36. Yol: %66,7 → %80,6 (hakemde 3 kusur) → %86,1 (model 3.6→3.8, fiyat aynı) → %91,7 (prompt'ta 3 açık). **En büyük kazanç benchmark'ı düzeltmekten geldi, modelden değil.** Onarım döngüsü: 40/40 ilk denemede, onarım hiç çalışmadı.
+- [x] Gün 7: `player_profile()` + pozisyona özel radar — profil ~328 ms (<1 sn), 900dk altı oyuncu dahil her satırda dakika/pozisyon/kapsam dolu. 406 birim + 130 db testi yeşil.

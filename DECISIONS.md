@@ -903,3 +903,21 @@ Neden birlikte: referansı tek başına küçültmek durumu kötüleştirir. Ref
 En büyük tek kazanç **benchmark'ı düzeltmekten** geldi, test edilen sistemden değil. Toplam sağlayıcı harcaması, tüm tekrar koşular dahil ~$1,85.
 
 **Tarih.** 2026-11-17
+
+---
+
+## D-031: Touches-share possession proxy ve savunma metriklerinde PAdj formülü
+
+**Bağlam.** Gün 7, `player_profile()` için savunma eylemlerini (tackle, interception vb.) oyuncunun takımının topa sahip olma oranına göre normalize etmek istedi — az topa sahip olan takımın oyuncusu doğal olarak daha fazla savunma eylemi biriktirir. Şemada (`player_match_stats`, `matches`, `passes`, `shots`) hiçbir possession yüzdesi kolonu yok.
+
+**Karar.** Possession proxy'si olarak maçtaki touches payı kullanıldı (`infra/migrations/004_possession.sql`): `team_match_touches` (takım × maç toplam touches) → `match_possession` (iki takımın birbirine göre payı, toplamı her zaman 100) → `player_possession` (oyuncunun oynadığı maçlardaki rakip possession'ının dakika-ağırlıklı ortalaması). Düzeltme formülü, FBref'in possession-adjusted istatistiklerindeki yaklaşımla aynı: `PAdj = raw_per90 × 50 / avg_opponent_possession_pct`. Yalnızca `category = 'defending'` metriklerine uygulanıyor — kullanıcı talebi özellikle savunma eylemleriyle sınırlıydı, `duels` kategorisi (hava topu vb.) dahil edilmedi.
+
+**Değerlendirilen alternatifler.**
+- *Possession verisi için ayrı bir kaynak/ETL eklemek* — OpenPlay paketinde possession/tracking verisi yok (CLAUDE.md'de zaten not edilmiş bir sınır); kapsam dışı.
+- *PAdj'yi tüm kategorilere uygulamak* — kullanıcı özellikle savunma eylemlerini kastetti; hücum/pas metriklerinde possession düzeltmesi farklı bir varsayım gerektirir ve istenmedi.
+
+**Sonuç/ölçüm.** `match_possession`'da takım+rakip yüzdesi her satırda 100'e toplanıyor (db testiyle doğrulandı). `player_profile()` çağrısı ~328 ms (James Milner, DM, Premier League 2025/26) — Gün 7 kabul kriteri <1 sn.
+
+**Yan not — mplsoccer 3 eksen altını kabul etmiyor.** Tasarımda kalecilere (GK) iki radar kategorisi (goalkeeping, passing) verilmişti; `mplsoccer.Radar` çalışma zamanında "3'ten az eksen" hatası verdi. GK'ye üçüncü kategori olarak `duels` (hava topu mücadeleleri, kalecide de anlamlı) eklendi.
+
+**Tarih.** 2026-11-18
