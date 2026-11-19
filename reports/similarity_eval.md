@@ -1,6 +1,6 @@
 # Benzerlik değerlendirmesi — pozisyon tutarlılığı
 
-Üretildi: 2026-11-19T13:16:55+00:00
+Üretildi: 2026-11-19T17:55:10+00:00
 
 Üretimdeki `similar_players()` adayları **ince** pozisyon grubuna filtreler,
 bu da tutarlılığı tanım gereği %100 yapardı. Bu ölçüm o filtreyi kaldırır:
@@ -25,7 +25,9 @@ Hedef: ≥ %90
 | `pca` | **%68.9** | altında | 0.704 |
 
 **Kazanan: `pca`** (%68.9).
-Üç konfigürasyon arasındaki fark 0.3 puan — pratikte ayırt edilemez. Ağırlıklandırmanın bu veri setinde pozisyon sinyaline katkısı yok denecek kadar az; sinyal metriklerin kendisinde. `pca` yalnızca en yüksek ortalama benzerliği verdiği için seçildi, belirgin bir üstünlüğü olduğu için değil.
+Sıralama ölçütü **pozisyon tutarlılığı**, ortalama benzerlik değil: herkesi birbirine benzer bulan bir konfigürasyon ayırt etmiş olmaz, yani yüksek ortalama benzerlik bir üstünlük değil bir çekincedir.
+`pca` aynı zamanda en yüksek ortalama benzerliği (0.704) veriyor — bu lehine değil, aleyhine okunması gereken bir işaret.
+Üç konfigürasyon arasındaki fark 0.3 puan — pratikte ayırt edilemez. Ağırlıklandırmanın bu veri setinde pozisyon sinyaline katkısı yok denecek kadar az; sinyal metriklerin kendisinde. `pca` yalnızca sıralanan tek ölçütte kıl payı önde olduğu için seçildi, belirgin bir üstünlüğü olduğu için değil.
 Hiçbir konfigürasyon %90 hedefine ulaşmadı. Bu bir bulgudur, yuvarlanacak bir sayı değil — aşağıdaki karışıklık tablosu hangi rollerin birbirini soğurduğunu gösteriyor.
 
 ## Grup bazında

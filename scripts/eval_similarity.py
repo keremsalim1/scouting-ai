@@ -184,12 +184,25 @@ def render(measured: dict) -> str:
         "",
         f"**Kazanan: `{winner}`** (%{winner_headline * 100:.1f}).",
     ]
+    lines.append(
+        "Sıralama ölçütü **pozisyon tutarlılığı**, ortalama benzerlik değil: herkesi "
+        "birbirine benzer bulan bir konfigürasyon ayırt etmiş olmaz, yani yüksek "
+        "ortalama benzerlik bir üstünlük değil bir çekincedir."
+    )
+    best_similarity = max(WEIGHTINGS, key=lambda w: measured["weightings"][w]["mean_similarity"])
+    if best_similarity == winner:
+        lines.append(
+            f"`{winner}` aynı zamanda en yüksek ortalama benzerliği "
+            f"({measured['weightings'][winner]['mean_similarity']:.3f}) veriyor — bu "
+            "lehine değil, aleyhine okunması gereken bir işaret."
+        )
     if spread < 2.0:
         lines.append(
             f"Üç konfigürasyon arasındaki fark {spread:.1f} puan — pratikte ayırt edilemez. "
             "Ağırlıklandırmanın bu veri setinde pozisyon sinyaline katkısı yok denecek "
-            "kadar az; sinyal metriklerin kendisinde. `pca` yalnızca en yüksek ortalama "
-            "benzerliği verdiği için seçildi, belirgin bir üstünlüğü olduğu için değil."
+            f"kadar az; sinyal metriklerin kendisinde. `{winner}` yalnızca sıralanan tek "
+            "ölçütte kıl payı önde olduğu için seçildi, belirgin bir üstünlüğü olduğu "
+            "için değil."
         )
     if winner_headline < TARGET:
         lines.append(

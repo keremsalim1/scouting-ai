@@ -956,9 +956,11 @@ En büyük tek kazanç **benchmark'ı düzeltmekten** geldi, test edilen sistemd
 | DM | %26 | %41,5 | +15,8 |
 
 **Üç bulgu, hiçbiri modelle ilgili değil:**
-1. **Ağırlıklandırma bu veri setinde neredeyse etkisiz.** Üç konfigürasyon 0,3 puan içinde. `pca` yalnızca en yüksek ortalama benzerliği verdiği için seçildi, ayırt edici üstünlüğü olduğu için değil. Gün 6'daki dersin tekrarı: ölçüm kurulunca "hangi varyant kazanır" sorusunun cevabı çoğu zaman "hiçbiri" oluyor.
+1. **Ağırlıklandırma bu veri setinde neredeyse etkisiz.** Üç konfigürasyon 0,3 puan içinde. Sıralama ölçütü pozisyon tutarlılığı; `pca` yalnızca o tek ölçütte kıl payı önde olduğu için seçildi. Ortalama top-10 benzerliğinin en yükseğini de o veriyor (0,704 / 0,649) ama bu **lehine değil aleyhine** bir işaret: herkesi birbirine benzer bulan bir konfigürasyon ayırt etmiş olmaz. Gün 6'daki dersin tekrarı: ölçüm kurulunca "hangi varyant kazanır" sorusunun cevabı çoğu zaman "hiçbiri" oluyor.
 2. **Savunma keskin, orta saha bir süreklilik.** CB %94,6 ve FB %92,6'ya karşı CM %54,0 (taban oranın tam üstünde, yani **sıfır kazanım**) ve DM %41,5 — DM'nin en yakın komşularının %54'ü aslında CM. AM/CM/DM üç ayrı rol değil, tek bir spektrum; OpenPlay'in taşıdığı top-olayı metrikleriyle ayrıştırılamıyorlar. Bu futbolla ilgili bir bulgu, bir prompt/parametre hatası değil.
 3. **Düşük benzerlik skoru bilgi taşıyor.** Elle incelemede Semenyo'nun en yakın komşusu 0,51; sistem zorlama bir eşleşme üretmek yerine düşük skor veriyor.
+
+Staleness: `metric_keys` karşılaştırması metrik kümesindeki değişikliği yakalıyordu ama **eşik değişikliğini yakalamıyordu** — `min_minutes` popülasyonu değiştirir, yani her z-skoru ve PCA tabanını, anahtar listesi birebir aynı kalırken. Migration 006 eşiği satıra yazdı; `similar_players()` artık ikisini de karşılaştırıyor.
 
 Ayrıca: `role`'de tek metrikli `goalkeeping` kategorisinin (`saves_per90`) kaleci benzerliğinin üçte birini sürmesi riski işaretlenmişti; elle incelemede **gerçekleşmedi** — ilk iki isim üç konfigürasyonda da aynı.
 

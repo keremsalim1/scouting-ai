@@ -38,8 +38,14 @@ class StaleVectorsError(Exception):
     """Raised when player_vectors is missing or no longer matches metrics.yaml.
 
     config/metrics.yaml is runtime authority (day 4: changing a threshold needs
-    no migration), but the vectors are a batch artefact. Adding a metric
-    therefore invalidates stored z-scores silently - so this refuses instead.
+    no migration), but the vectors are a batch artefact, so an edit there
+    invalidates them silently. Two ways that happens, and both are checked:
+
+      * the metric set changed - the vector's dimensions no longer mean what
+        the stored ``metric_keys`` say they mean;
+      * ``min_minutes`` changed - the key list is byte-identical but the
+        population is different, so every z-score, column mean and PCA basis
+        was fitted against a group that no longer exists.
     """
 
 
@@ -113,10 +119,24 @@ def similar_players(
             "config/metrics.yaml defines now; run `make build-vectors`"
         )
         raise StaleVectorsError(msg)
+    if vector_row["min_minutes"] != min_minutes_threshold:
+        msg = (
+            f"stored vectors were fitted under a min_minutes of "
+            f"{vector_row['min_minutes']}, but config/metrics.yaml now says "
+            f"{min_minutes_threshold}; the population - and so every z-score - "
+            "differs. Run `make build-vectors`"
+        )
+        raise StaleVectorsError(msg)
 
-    pool_size = _fetch_pool_size(conn, player_id, position_group, weighting)
+    pool_size = _fetch_pool_size(conn, player_id, season, position_group, weighting)
     results = _fetch_neighbours(
-        conn, player_id, position_group, weighting, vector_row["vec"], min(n, pool_size)
+        conn,
+        player_id,
+        season,
+        position_group,
+        weighting,
+        vector_row["vec"],
+        min(n, pool_size),
     )
 
     return SimilarityResult(
@@ -153,7 +173,8 @@ def _fetch_vector_row(
 ) -> dict | None:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
-            "select vec, dims, metric_keys, imputed_dims from football.player_vectors "
+            "select vec, dims, metric_keys, imputed_dims, min_minutes "
+            "from football.player_vectors "
             "where player_id = %s and comp = %s and season = %s and weighting = %s",
             (player_id, comp, season, weighting),
         )
@@ -161,19 +182,28 @@ def _fetch_vector_row(
 
 
 def _fetch_pool_size(
-    conn: psycopg.Connection, player_id: int, position_group: str, weighting: str
+    conn: psycopg.Connection, player_id: int, season: str, position_group: str, weighting: str
 ) -> int:
     """Candidates after self-exclusion.
 
-    Excluded by player_id rather than by row: a player who changed leagues
-    mid-season has two player_season rows and so two vectors, and matching on
+    `count(distinct player_id)`, not `count(*)`: a player who changed leagues
+    mid-season has two player_season rows and so two vectors, but he is one
+    candidate. Counting rows would overstate the pool and disagree with the
+    result list, which keeps one row per player.
+
+    Excluded by player_id rather than by row, for the same reason — matching on
     the row alone would return him as his own closest match.
+
+    `comp` is deliberately *not* filtered: cross-league search is the product.
+    `season` is, because comparing a player against a different season's
+    population is a different question than the caller asked.
     """
     with conn.cursor() as cur:
         cur.execute(
-            "select count(*) from football.player_vectors "
-            "where position_group = %s and weighting = %s and player_id <> %s",
-            (position_group, weighting, player_id),
+            "select count(distinct player_id) from football.player_vectors "
+            "where season = %s and position_group = %s and weighting = %s "
+            "and player_id <> %s",
+            (season, position_group, weighting, player_id),
         )
         return cur.fetchone()[0]
 
@@ -181,6 +211,7 @@ def _fetch_pool_size(
 def _fetch_neighbours(
     conn: psycopg.Connection,
     player_id: int,
+    season: str,
     position_group: str,
     weighting: str,
     vec: str,
@@ -188,27 +219,40 @@ def _fetch_neighbours(
 ) -> list[SimilarPlayer]:
     if limit <= 0:
         return []
+    # Ranked entirely inside player_vectors, cut to `limit`, and only then
+    # joined to player_season. That view aggregates player_match_stats and runs
+    # the position-voting window functions, so it costs ~8x more to materialise
+    # than the vector maths does to run: joining it before the limit measured
+    # 375ms against 47ms for this shape.
+    #
+    # DISTINCT ON keeps one row per player_id (a mid-season league changer has
+    # two) and forces an ORDER BY starting with player_id, so the similarity
+    # ordering happens in the outer query.
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
-            select distinct on (v.player_id)
-                   v.player_id, v.comp, v.season, v.position_group,
-                   v.imputed_dims, s.player, s.teams, s.minutes_played, s.matches,
-                   1 - (v.vec <=> %s::vector) as similarity
-            from football.player_vectors v
+            with ranked as (
+                select distinct on (player_id)
+                       player_id, comp, season, position_group, imputed_dims,
+                       1 - (vec <=> %s::vector) as similarity
+                from football.player_vectors
+                where season = %s and position_group = %s and weighting = %s
+                  and player_id <> %s
+                order by player_id, vec <=> %s::vector
+            ), top as (
+                select * from ranked order by similarity desc limit %s
+            )
+            select t.player_id, t.comp, t.season, t.position_group, t.imputed_dims,
+                   t.similarity, s.player, s.teams, s.minutes_played, s.matches
+            from top t
             join football.player_season s
-              on s.player_id = v.player_id and s.comp = v.comp and s.season = v.season
-            where v.position_group = %s and v.weighting = %s and v.player_id <> %s
-            order by v.player_id, v.vec <=> %s::vector
+              on s.player_id = t.player_id and s.comp = t.comp and s.season = t.season
+            order by t.similarity desc
             """,
-            (vec, position_group, weighting, player_id, vec),
+            (vec, season, position_group, weighting, player_id, vec, limit),
         )
         rows = cur.fetchall()
 
-    # DISTINCT ON keeps one row per player_id (a league-changer has two), but it
-    # forces an ORDER BY starting with player_id, so the final ranking is done
-    # here rather than in SQL.
-    rows.sort(key=lambda r: r["similarity"], reverse=True)
     return [
         SimilarPlayer(
             player_id=row["player_id"],
@@ -222,5 +266,5 @@ def _fetch_neighbours(
             similarity=row["similarity"],
             imputed_dimensions=row["imputed_dims"],
         )
-        for row in rows[:limit]
+        for row in rows
     ]

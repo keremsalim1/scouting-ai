@@ -33,6 +33,7 @@ from football_ai.scouting.vectors import (
     fit_pca,
     pad_to,
     role_scale_factors,
+    zscore_cell,
 )
 
 WEIGHTINGS = ("equal", "role", "pca")
@@ -140,30 +141,10 @@ def build_cells(rows: list[dict], config: MetricsConfig) -> dict[str, dict[tuple
     return cells
 
 
-def zscore_cell(values: np.ndarray, imputed: np.ndarray) -> np.ndarray:
-    """Z-score a cell, holding imputed entries out of the mean and stddev.
-
-    An imputed entry is "we do not know", not "the player did zero of it".
-    Letting a run of them into the statistics would drag the distribution
-    toward the fill value and shift everyone else's score.
-    """
-    out = np.zeros_like(values, dtype=float)
-    for column in range(values.shape[1]):
-        observed = ~imputed[:, column]
-        if not observed.any():
-            continue
-        column_values = values[observed, column]
-        mean = column_values.mean()
-        stddev = column_values.std(ddof=0)
-        if stddev == 0:
-            continue
-        out[observed, column] = (column_values - mean) / stddev
-    return out
-
-
 def build(conn: psycopg.Connection) -> dict[str, int]:
     config = mx.load()
     cells = build_cells(fetch_rows(conn), config)
+    min_minutes = config.min_minutes
     built_at = datetime.now(UTC)
     written: dict[str, int] = {}
     records: list[tuple] = []
@@ -205,6 +186,7 @@ def build(conn: psycopg.Connection) -> dict[str, int]:
                         dims,
                         metric_keys,
                         n_imputed,
+                        min_minutes,
                         built_at,
                     )
                 )
@@ -215,8 +197,8 @@ def build(conn: psycopg.Connection) -> dict[str, int]:
         cur.executemany(
             "insert into football.player_vectors (comp, season, player_id, "
             "position_group, position_group_broad, weighting, vec, dims, "
-            "metric_keys, imputed_dims, built_at) "
-            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "metric_keys, imputed_dims, min_minutes, built_at) "
+            "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             records,
         )
     conn.commit()

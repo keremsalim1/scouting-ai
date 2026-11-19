@@ -7,7 +7,7 @@ import time
 import psycopg
 import pytest
 
-from football_ai.data.db import connect, readonly_dsn
+from football_ai.data.db import connect, etl_dsn, readonly_dsn
 from football_ai.scouting import similarity as similarity_module
 from football_ai.scouting.profile import PlayerNotFoundError
 from football_ai.scouting.similarity import (
@@ -17,6 +17,45 @@ from football_ai.scouting.similarity import (
 )
 
 pytestmark = pytest.mark.db
+
+
+@pytest.fixture
+def writable_conn():
+    """A rolled-back transaction, so synthetic rows never outlive the test.
+
+    The assertions run on this same connection: a second connection would not
+    see uncommitted rows, and committing them would leave the table dirty for
+    every later test.
+    """
+    try:
+        connection = connect(etl_dsn())
+    except psycopg.OperationalError as exc:  # pragma: no cover - env dependent
+        pytest.skip(f"no write access: {exc}")
+    try:
+        yield connection
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def _clone_vector_row(conn, player_id, comp, season, *, new_comp=None, new_season=None):
+    """Copy a player's vector rows under a different comp or season.
+
+    Mirrors a real shape the one-season dataset cannot produce: a mid-season
+    league change (two rows, same fine position group) and a second season.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "insert into football.player_vectors "
+            "(comp, season, player_id, position_group, position_group_broad, "
+            " weighting, vec, dims, metric_keys, imputed_dims, built_at) "
+            "select %s, %s, player_id, position_group, position_group_broad, "
+            "       weighting, vec, dims, metric_keys, imputed_dims, built_at "
+            "from football.player_vectors "
+            "where player_id = %s and comp = %s and season = %s",
+            (new_comp or comp, new_season or season, player_id, comp, season),
+        )
+        return cur.rowcount
 
 
 @pytest.fixture(scope="module")
@@ -122,6 +161,64 @@ def test_stale_metric_set_raises(ro_conn, qualified_player, monkeypatch):
     )
     with pytest.raises(StaleVectorsError):
         similar_players(ro_conn, player_id, comp, season)
+
+
+def test_changed_min_minutes_threshold_raises(ro_conn, qualified_player, monkeypatch):
+    """The threshold decides who is in the population, so changing it changes
+    every z-score, mean and PCA basis while leaving the metric key list
+    byte-identical. metrics.yaml is runtime authority; the vectors are not."""
+    import dataclasses
+
+    from football_ai.metrics import load
+
+    player_id, comp, season = qualified_player
+    relaxed = dataclasses.replace(load(), min_minutes=100)
+    monkeypatch.setattr(similarity_module, "load_metrics", lambda *a, **k: relaxed)
+    with pytest.raises(StaleVectorsError):
+        similar_players(ro_conn, player_id, comp, season)
+
+
+def test_pool_size_counts_players_not_rows(writable_conn, qualified_player):
+    """A mid-season league changer has two vector rows. He is one candidate,
+    not two — otherwise the reported pool overstates what was searched."""
+    player_id, comp, season = qualified_player
+    with writable_conn.cursor() as cur:
+        cur.execute(
+            "select player_id, comp, season from football.player_vectors "
+            "where position_group = 'FW' and weighting = 'equal' "
+            "and player_id <> %s limit 1",
+            (player_id,),
+        )
+        other_id, other_comp, other_season = cur.fetchone()
+
+    before = similar_players(writable_conn, player_id, comp, season).comparison_pool_size
+    assert _clone_vector_row(writable_conn, other_id, other_comp, other_season, new_comp="zzz"), (
+        "expected the clone to insert rows"
+    )
+    after = similar_players(writable_conn, player_id, comp, season).comparison_pool_size
+    assert after == before
+
+
+def test_vectors_from_another_season_are_not_candidates(writable_conn, qualified_player):
+    """Only one season is loaded today, so a missing season filter is
+    invisible. It would not stay invisible."""
+    player_id, comp, season = qualified_player
+    with writable_conn.cursor() as cur:
+        cur.execute(
+            "select player_id, comp, season from football.player_vectors "
+            "where position_group = 'FW' and weighting = 'equal' "
+            "and player_id <> %s limit 1",
+            (player_id,),
+        )
+        other_id, other_comp, other_season = cur.fetchone()
+
+    before = similar_players(writable_conn, player_id, comp, season).comparison_pool_size
+    assert _clone_vector_row(
+        writable_conn, other_id, other_comp, other_season, new_season="2425"
+    ), "expected the clone to insert rows"
+    result = similar_players(writable_conn, player_id, comp, season, n=10_000)
+    assert result.comparison_pool_size == before
+    assert len(result.results) == result.comparison_pool_size
 
 
 def test_position_consistency_excludes_gk_and_covers_every_other_group(ro_conn):
