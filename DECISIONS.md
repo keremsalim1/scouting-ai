@@ -921,3 +921,47 @@ En büyük tek kazanç **benchmark'ı düzeltmekten** geldi, test edilen sistemd
 **Yan not — mplsoccer 3 eksen altını kabul etmiyor.** Tasarımda kalecilere (GK) iki radar kategorisi (goalkeeping, passing) verilmişti; `mplsoccer.Radar` çalışma zamanında "3'ten az eksen" hatası verdi. GK'ye üçüncü kategori olarak `duels` (hava topu mücadeleleri, kalecide de anlamlı) eklendi.
 
 **Tarih.** 2026-11-18
+
+---
+
+## D-032: Benzerlik vektörleri geniş pozisyon havuzunda kurulur; ağırlıklandırma neredeyse etkisiz çıktı
+
+**Bağlam.** Gün 8 `similar_players()` istiyordu: aynı ince pozisyon grubundan "bu oyuncu gibi oynayan" oyuncular. İlk tasarım vektör uzayını **ince** pozisyon grubunda kuruyordu (FW'ye FW metrikleri, CB'ye CB metrikleri). Builder check bunun iki yönden çalışmadığını gösterdi: (1) kabul metriği geniş havuzda CB ile FB'yi karşılaştırmayı gerektiriyor ama CB vektörü 21, FB vektörü 28 boyut ve farklı metrikler farklı slotlarda — aralarında kosinüs **tanımsız**; `pca` konfigürasyonunda tabanlar da tamamen ayrı. (2) z-skor ince grup içinde alınınca her grup ortalaması 0 olur ve CB'yi FB'den ayıran seviye farkı **tam olarak normalize edilip atılır** — yani ölçülmek istenen sinyal, ölçüm kurulmadan önce siliniyordu.
+
+**Karar.** Vektör uzayı **geniş** gruba (GK/DEF/MID/ATT) taşındı. Metrik kümesi o geniş gruptaki ince grupların `POSITION_CATEGORIES` kategorilerinin birleşimi (GK 11, DEF 28, MID 35, ATT 24 boyut); z-skor `(comp, position_group_broad)` hücresinde. Üretimdeki arama yine **ince** gruba filtreleniyor — kullanıcı talebi buydu — ama kabul metriği o filtreyi kaldırarak ölçüyor, böylece başarısız olabiliyor. Üç ağırlıklandırma: `equal`, `role` (`sqrt(1/(C·k_c))` çarpanı; kosinüs iç çarpımı çarpanı karelediği için ağırlığın karekökü uygulanır), `pca` (geniş grup başına, %90 varyans, işaret-normalize ve deterministik).
+
+**Değerlendirilen alternatifler.**
+- *Ölçüm için ayrı bir ikinci vektör uzayı kurmak* — üretimde ince ayrımı korurdu ama ~2 kat iş ve 4 ek PCA fit; kazancı ölçülmemiş bir incelik.
+- *Kabul metriğini değiştirmek* — hesaplanabilir ama plandaki kriterden sapma; ve "pozisyon tutarlılığı" zaten vektörün işe yarayıp yaramadığını soran doğru soru.
+- *İnce grup z-skoru + geniş havuz metriği* — matematiksel olarak imkansız (yukarıdaki (1)).
+
+**Sonuç/ölçüm.** `make eval-similarity`, geniş havuzda top-10 komşunun kaçının aynı ince pozisyonda olduğu, GK hariç (geniş havuzu = ince havuzu, yapı gereği %100), yedi grubun **ağırlıksız** ortalaması (oyuncu başına ortalama CB 221 ve FW 172'yi baskın yapardı):
+
+| Ağırlıklandırma | Pozisyon tutarlılığı | Ortalama top-10 benzerlik |
+| --- | --- | --- |
+| `equal` | %68,5 | 0,649 |
+| `role` | %68,6 | 0,648 |
+| `pca` | **%68,9** | 0,704 |
+
+**Hedef %90 tutmadı ve iterasyona girilmedi** — karar önceden alınmıştı: ölç, karışıklık tablosuyla açıkla, sayıyı yuvarlama. Grup bazında (taban oran → sonuç):
+
+| Grup | Taban | `pca` | Kazanım |
+| --- | --- | --- | --- |
+| CB | %52 | %94,6 | +42,2 |
+| FB | %48 | %92,6 | +45,0 |
+| FW | %63 | %79,8 | +17,0 |
+| W | %37 | %61,0 | +23,8 |
+| AM | %20 | %58,5 | +38,4 |
+| CM | %54 | %54,0 | **+0,0** |
+| DM | %26 | %41,5 | +15,8 |
+
+**Üç bulgu, hiçbiri modelle ilgili değil:**
+1. **Ağırlıklandırma bu veri setinde neredeyse etkisiz.** Üç konfigürasyon 0,3 puan içinde. `pca` yalnızca en yüksek ortalama benzerliği verdiği için seçildi, ayırt edici üstünlüğü olduğu için değil. Gün 6'daki dersin tekrarı: ölçüm kurulunca "hangi varyant kazanır" sorusunun cevabı çoğu zaman "hiçbiri" oluyor.
+2. **Savunma keskin, orta saha bir süreklilik.** CB %94,6 ve FB %92,6'ya karşı CM %54,0 (taban oranın tam üstünde, yani **sıfır kazanım**) ve DM %41,5 — DM'nin en yakın komşularının %54'ü aslında CM. AM/CM/DM üç ayrı rol değil, tek bir spektrum; OpenPlay'in taşıdığı top-olayı metrikleriyle ayrıştırılamıyorlar. Bu futbolla ilgili bir bulgu, bir prompt/parametre hatası değil.
+3. **Düşük benzerlik skoru bilgi taşıyor.** Elle incelemede Semenyo'nun en yakın komşusu 0,51; sistem zorlama bir eşleşme üretmek yerine düşük skor veriyor.
+
+Ayrıca: `role`'de tek metrikli `goalkeeping` kategorisinin (`saves_per90`) kaleci benzerliğinin üçte birini sürmesi riski işaretlenmişti; elle incelemede **gerçekleşmedi** — ilk iki isim üç konfigürasyonda da aynı.
+
+Performans: sorgu <200 ms (testle sabit), 1072 oyuncu × 3 ağırlıklandırma = 3216 vektör, tam build saniyeler. Yeniden build bit-bit aynı (md5 `78fc5d33c08d207937530c47d15ec0c9`) — PCA bileşenleri bu yüzden saklanmıyor.
+
+**Tarih.** 2026-11-19

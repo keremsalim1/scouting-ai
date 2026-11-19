@@ -147,6 +147,24 @@ Gerekçe D-031.
 - Kategori skoru = o kategorideki metriklerin percentile'larının **basit ortalaması**; hepsi null ise skor null, 0 değil (`src/football_ai/scouting/calc.py`).
 - Ölçüm: `player_profile` çağrısı ~328 ms (James Milner, DM, Premier League 2025/26) — kabul kriteri <1 sn.
 
+## Benzerlik (Gün 8)
+Gerekçe D-032. `similar_players(conn, player_id, comp, season, n, weighting)` → `SimilarityResult` (Pydantic). `src/football_ai/scouting/similarity.py`.
+- **Vektör uzayı geniş pozisyon havuzunda, ince grupta değil.** İnce grup kabul metriğini matematiksel olarak tanımsız yapıyordu (CB 21 boyut vs FB 28 boyut, PCA'da ayrı tabanlar) ve ince grup içinde z-skor almak CB'yi FB'den ayıran sinyali tam olarak siliyordu. Boyutlar: GK 11, DEF 28, MID 35, ATT 24.
+- Metrik kümesi `POSITION_CATEGORIES`'ten türetiliyor (geniş grup içindeki ince grupların **birleşimi**), ikinci bir liste yok. `discipline` zaten orada hariç.
+- **Vektör kategori skorundan değil, tek tek metriklerden kuruluyor.** Kategori ortalaması "çok şut atan az yaratan" ile tersini aynı noktaya çökertir.
+- **Kosinüs, Öklid değil:** z-skorlanmış vektörde kosinüs *örüntüyü* karşılaştırır, büyüklüğü değil. "Benzerlik kalite değildir" kuralını gerçek kılan şey bu; Öklid seviyeyi baskın hale getirip özelliği sessizce kalite sıralamasına çevirirdi.
+- **`role` ağırlığı karekökle uygulanır.** Kosinüs iç çarpımında boyutu `w` ile ölçeklemek efektif ağırlığı `w²` yapar; spec'teki `1/(C·k_c)` ağırlığı için çarpan `sqrt(1/(C·k_c))` olmalı. Doğrudan uygulamak ağırlığı karesine alır.
+- **PCA deterministik olmak zorunda:** bileşen işaretleri fit'ten fit'e dönebilir ve değişmemiş veride tüm vektörleri çalkalar. `random_state` sabit + en büyük mutlak yüklemeyi pozitife zorlayan işaret normalizasyonu. Bu yüzden bileşenler saklanmıyor, yeniden hesaplanıyor. Ölçüm: ikinci build bit-bit aynı (md5 `78fc5d33…`).
+- **Imputed girdiler z-skorun ortalama/sapmasından dışlanır.** "Bilmiyoruz" ile "sıfır yaptı" aynı şey değil; dahil etmek dağılımı dolgu değerine doğru çeker ve herkesin skorunu kaydırır. Sayısı her satırda `imputed_dims`.
+- **Possession bilinmiyorsa ham değere düşülmez**, boyut imputed sayılır — düzeltilmiş ve ham değerler tek dağılımda karışırsa sessizce yanlış z-skor çıkar.
+- `vector(35)` sabit genişlik + sıfır dolgu (MID en geniş). Karşılaştırma hep tek geniş havuz içinde olduğu için dolgu her çifte aynı katkıyı yapar, sıralamayı değiştirmez.
+- **`metric_keys` `pca` satırlarında da *girdi* metriklerini tutar** (`pc1…pcN` değil) — scouting raporunun yazmak zorunda olduğu provenance bu. `pca`'da `cardinality(metric_keys) > dims`.
+- **Sorgu oyuncusu `player_id` ile dışlanır, satırla değil** — sezon içinde lig değiştirenin iki vektörü var, yoksa "en benzer oyuncu: kendisi" çıkar. Sonuçta bir `player_id` en fazla bir kez görünür.
+- **`StaleVectorsError`:** `metrics.yaml` çalışma zamanı otoritesi ama vektörler batch; eşik/metrik değişince depolanmış z-skorlar sessizce çürür. `similar_players()` saklanan `metric_keys` ile canlı konfigürasyonu karşılaştırıp reddeder → `make build-vectors`.
+- 900 dk altı oyuncu vektör almaz ve sorgulanamaz → `PlayerNotQualifiedError`. 200 dakikalık per-90 gürültüdür; üstüne benzerlik listesi kurmak tam olarak yasak olan sessiz yanlışlıktır.
+- Her sonuçta zorunlu: **"Benzerlik oyun profilinin benzerliğidir, oyuncu kalitesi değildir."**
+- Komutlar: `make build-vectors`, `make eval-similarity`.
+
 ## Durum
 - [x] Gün 0: plan onaylandı
 - [x] Gün 1: OpenPlay doğrulama — 3 ligde tüm kontroller `pass`
@@ -156,3 +174,4 @@ Gerekçe D-031.
 - [x] Gün 5: güvenli text-to-SQL — 36 saldırgan vakada zararlı sorgu 0, uçtan uca çalışıyor
 - [x] Gün 6: 40 soruluk benchmark + `make eval-sql` + CI — **%91,7 (33/36), eşik %70**; `gemini-3.8-flash`, 112 sn, 0 altyapı hatası, $0,23. 394 birim + 124 db testi yeşil, gold set 36/36. Yol: %66,7 → %80,6 (hakemde 3 kusur) → %86,1 (model 3.6→3.8, fiyat aynı) → %91,7 (prompt'ta 3 açık). **En büyük kazanç benchmark'ı düzeltmekten geldi, modelden değil.** Onarım döngüsü: 40/40 ilk denemede, onarım hiç çalışmadı.
 - [x] Gün 7: `player_profile()` + pozisyona özel radar — profil ~328 ms (<1 sn), 900dk altı oyuncu dahil her satırda dakika/pozisyon/kapsam dolu. 406 birim + 130 db testi yeşil.
+- [x] Gün 8: `similar_players()` + pgvector + 3 ağırlıklandırma — sorgu <200 ms, 1072 oyuncu × 3 = 3216 vektör. **Pozisyon tutarlılığı %68.9 (`pca`), hedef %90'ın altında** ve bu raporlandı, iterasyona girilmedi (karar: ölç ve açıkla). Üç konfigürasyon 0.3 puan içinde — ağırlıklandırma bu veri setinde neredeyse etkisiz, sinyal metriklerin kendisinde. Savunma keskin (CB %94.6, FB %92.6), orta saha süreklilik (CM %54.0, taban %54 — sıfır kazanım). 419 birim + 154 db testi yeşil. 10 sorgu elle incelendi (`reports/similarity_hand_review.md`), kaleci dahil.
