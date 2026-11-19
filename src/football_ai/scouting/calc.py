@@ -6,6 +6,13 @@ without a database connection.
 
 from __future__ import annotations
 
+# PAdj scales action *volume* with how much the ball the opponent had; it is
+# meaningless for a success rate (tackle_pct does not get easier because the
+# opponent had the ball more), so only per90/count metrics are adjusted.
+# Public because the Day 8 vector build applies the same rule and must not
+# restate it.
+POSSESSION_ADJUSTABLE_UNITS: frozenset[str] = frozenset({"per90", "count"})
+
 
 def category_score(percentiles: list[float | None]) -> float | None:
     """Simple mean of the non-null percentiles. None if none are non-null."""

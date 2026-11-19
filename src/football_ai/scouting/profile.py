@@ -18,18 +18,17 @@ from pydantic import BaseModel
 
 from football_ai.metrics import MetricsConfig
 from football_ai.metrics import load as load_metrics
-from football_ai.scouting.calc import category_score, possession_adjust
+from football_ai.scouting.calc import (
+    POSSESSION_ADJUSTABLE_UNITS,
+    category_score,
+    possession_adjust,
+)
 from football_ai.scouting.categories import POSITION_CATEGORIES
 
 _POSSESSION_UNKNOWN_NOTE = (
     "opponent possession is unknown for this player's matches; "
     "defending metrics are not possession-adjusted"
 )
-
-# PAdj scales action *volume* with how much the ball the opponent had; it is
-# meaningless for a success rate (tackle_pct does not get easier because the
-# opponent had the ball more), so only per90/count metrics are adjusted.
-_POSSESSION_ADJUSTABLE_UNITS = {"per90", "count"}
 
 
 class PlayerNotFoundError(Exception):
@@ -112,7 +111,7 @@ def player_profile(
     for row in metric_rows:
         possession_adjusted_value = (
             possession_adjust(row["value"], avg_opponent_possession_pct)
-            if row["category"] == "defending" and row["unit"] in _POSSESSION_ADJUSTABLE_UNITS
+            if row["category"] == "defending" and row["unit"] in POSSESSION_ADJUSTABLE_UNITS
             else None
         )
         metric_value = MetricValue(
