@@ -71,7 +71,7 @@ def _require(name: str) -> str:
 
 def _dsn(user: str, password: str) -> str:
     host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "55432")
+    port = os.environ.get("POSTGRES_PORT", "15432")
     db = os.environ.get("POSTGRES_DB", "football")
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
