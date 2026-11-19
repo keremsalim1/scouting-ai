@@ -49,3 +49,39 @@ def test_vec_column_is_pgvector_of_width_35(ro_conn):
             "where attrelid = 'football.player_vectors'::regclass and attname = 'vec'"
         )
         assert cur.fetchone()[0] == 35
+
+
+def test_python_fine_to_broad_matches_the_sql_function(ro_conn):
+    """The Python map duplicates football.position_group_broad(); prove they agree."""
+    from football_ai.scouting.broad_groups import FINE_TO_BROAD
+
+    with ro_conn.cursor() as cur:
+        cur.execute(
+            "select distinct position_group, position_group_broad "
+            "from football.player_season where position_group is not null"
+        )
+        rows = cur.fetchall()
+    assert rows
+    checked = 0
+    for fine, broad in rows:
+        if fine not in FINE_TO_BROAD:
+            continue  # covered by the next test
+        assert FINE_TO_BROAD[fine] == broad
+        checked += 1
+    assert checked == len(FINE_TO_BROAD)
+
+
+def test_no_qualified_player_sits_outside_the_vector_spaces(ro_conn):
+    """`UNK` (position_source='unknown') has no category set and therefore no
+    vector space. That is safe only as long as no such player qualifies - if
+    one ever did, the build would KeyError instead of placing him."""
+    from football_ai.scouting.broad_groups import FINE_TO_BROAD
+
+    with ro_conn.cursor() as cur:
+        cur.execute(
+            "select position_group, count(*) from football.player_season "
+            "where minutes_played >= 900 and position_group <> all(%s) "
+            "group by position_group",
+            (list(FINE_TO_BROAD),),
+        )
+        assert cur.fetchall() == []
