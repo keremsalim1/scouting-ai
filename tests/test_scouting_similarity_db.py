@@ -124,6 +124,15 @@ def test_stale_metric_set_raises(ro_conn, qualified_player, monkeypatch):
         similar_players(ro_conn, player_id, comp, season)
 
 
+def test_position_consistency_excludes_gk_and_covers_every_other_group(ro_conn):
+    from eval_similarity import position_consistency
+
+    scores = position_consistency(ro_conn, "equal")
+    assert "GK" not in scores
+    assert set(scores) == {"CB", "FB", "DM", "CM", "AM", "W", "FW"}
+    assert all(0.0 <= v <= 1.0 for v in scores.values())
+
+
 def test_query_completes_under_200ms(ro_conn, qualified_player):
     player_id, comp, season = qualified_player
     similar_players(ro_conn, player_id, comp, season)  # warm

@@ -16,7 +16,7 @@ PSQL_DB ?= football
 
 .PHONY: help db-up db-down db-reset db-shell db-wait migrate etl etl-bench counts \
         ask schema-prompt llm-models validate test test-data test-db lint fmt check setup \
-        build-vectors \
+        build-vectors eval-similarity \
         eval-sql eval-sql-both eval-sql-gold eval-sql-merge \
         eval-sql-batch1 eval-sql-batch2 eval-sql-batch3 eval-sql-smoke
 
@@ -35,6 +35,7 @@ help:
 	@echo "llm-models list the models your API key can actually reach"
 	@echo "validate   regenerate the data validation report and findings"
 	@echo "build-vectors   build similarity vectors into pgvector (needs a loaded db)"
+	@echo "eval-similarity position consistency for all three weightings (needs vectors)"
 	@echo "eval-sql        40-question text-to-SQL benchmark (needs an LLM key + loaded db)"
 	@echo "eval-sql-both   same, strong + weak model, with a disagreement table"
 	@echo "eval-sql-gold   validate the gold set: guard + EXPLAIN, no LLM (what CI runs)"
@@ -100,6 +101,9 @@ MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
 
 build-vectors:
 	$(UV) run python scripts/build_vectors.py
+
+eval-similarity:
+	$(UV) run python scripts/eval_similarity.py
 
 eval-sql:
 	$(UV) run python scripts/eval_sql.py --model $(MODEL_STRONG)
