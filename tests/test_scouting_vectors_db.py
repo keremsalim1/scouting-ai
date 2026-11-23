@@ -42,13 +42,13 @@ def test_player_vectors_is_readable_and_has_expected_columns(ro_conn):
     } <= columns
 
 
-def test_vec_column_is_pgvector_of_width_35(ro_conn):
+def test_vec_column_is_pgvector_of_width_37(ro_conn):
     with ro_conn.cursor() as cur:
         cur.execute(
             "select atttypmod from pg_attribute "
             "where attrelid = 'football.player_vectors'::regclass and attname = 'vec'"
         )
-        assert cur.fetchone()[0] == 35
+        assert cur.fetchone()[0] == 37
 
 
 def test_python_fine_to_broad_matches_the_sql_function(ro_conn):
@@ -97,7 +97,7 @@ def test_no_vector_contains_nan_or_infinity(ro_conn):
 
 def test_dims_match_the_broad_group_for_non_pca_rows(ro_conn):
     from football_ai.metrics import load
-    from football_ai.scouting.broad_groups import broad_metric_keys
+    from football_ai.scouting.descriptors import vector_feature_keys
 
     config = load()
     with ro_conn.cursor() as cur:
@@ -108,7 +108,7 @@ def test_dims_match_the_broad_group_for_non_pca_rows(ro_conn):
         rows = cur.fetchall()
     assert rows
     for broad, dims in rows:
-        assert dims == len(broad_metric_keys(broad, config))
+        assert dims == len(vector_feature_keys(broad, config))
 
 
 def test_pca_rows_keep_input_metric_keys_and_fewer_dims(ro_conn):

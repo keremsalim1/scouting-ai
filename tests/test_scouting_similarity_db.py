@@ -157,7 +157,7 @@ def test_missing_vector_row_raises_rather_than_returning_nothing(
 def test_stale_metric_set_raises(ro_conn, qualified_player, monkeypatch):
     player_id, comp, season = qualified_player
     monkeypatch.setattr(
-        similarity_module, "broad_metric_keys", lambda *a, **k: ("a_metric_added_later",)
+        similarity_module, "vector_feature_keys", lambda *a, **k: ("a_metric_added_later",)
     )
     with pytest.raises(StaleVectorsError):
         similar_players(ro_conn, player_id, comp, season)
@@ -219,6 +219,33 @@ def test_vectors_from_another_season_are_not_candidates(writable_conn, qualified
     result = similar_players(writable_conn, player_id, comp, season, n=10_000)
     assert result.comparison_pool_size == before
     assert len(result.results) == result.comparison_pool_size
+
+
+def test_unknown_weighting_is_rejected_as_a_bad_argument(ro_conn, qualified_player):
+    """A typo must not read as "the table needs rebuilding" - the table is fine."""
+    player_id, comp, season = qualified_player
+    with pytest.raises(ValueError, match="rol"):
+        similar_players(ro_conn, player_id, comp, season, weighting="rol")
+
+
+def test_every_vector_row_has_a_player_season_row(ro_conn):
+    """What makes the dedup-before-join in _fetch_neighbours correct.
+
+    A candidate is deduped inside player_vectors and only then joined to
+    player_season, so a vector row with no matching season row would drop that
+    candidate from results entirely. That cannot happen while this holds: the
+    build derives every row from player_metrics, which derives from
+    player_season. Asserting the invariant is the honest test - a synthetic
+    orphan row would be testing a state the system cannot reach.
+    """
+    with ro_conn.cursor() as cur:
+        cur.execute(
+            "select count(*) from football.player_vectors v "
+            "where not exists (select 1 from football.player_season s "
+            "  where s.player_id = v.player_id and s.comp = v.comp "
+            "    and s.season = v.season)"
+        )
+        assert cur.fetchone()[0] == 0
 
 
 def test_position_consistency_excludes_gk_and_covers_every_other_group(ro_conn):

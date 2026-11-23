@@ -20,10 +20,16 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel
 
 from football_ai.metrics import load as load_metrics
-from football_ai.scouting.broad_groups import FINE_TO_BROAD, broad_metric_keys
+from football_ai.scouting.broad_groups import FINE_TO_BROAD
+from football_ai.scouting.descriptors import vector_feature_keys
 from football_ai.scouting.profile import PlayerNotFoundError
 
 SIMILARITY_NOTE = "Benzerlik oyun profilinin benzerliğidir, oyuncu kalitesi değildir."
+
+# Mirrors the check constraint on football.player_vectors. Validated on the
+# read path too: without it a typo falls through to the missing-vector branch
+# and tells the caller to rebuild a table that is perfectly healthy.
+WEIGHTINGS: frozenset[str] = frozenset({"equal", "role", "pca"})
 
 
 class PlayerNotQualifiedError(Exception):
@@ -87,6 +93,10 @@ def similar_players(
     n: int = 10,
     weighting: str = "equal",
 ) -> SimilarityResult:
+    if weighting not in WEIGHTINGS:
+        msg = f"unknown weighting {weighting!r}; expected one of {sorted(WEIGHTINGS)}"
+        raise ValueError(msg)
+
     identity = _fetch_identity(conn, player_id, comp, season)
     if identity is None:
         msg = f"no player {player_id} in {comp} {season}"
@@ -112,7 +122,7 @@ def similar_players(
         raise StaleVectorsError(msg)
 
     position_group = identity["position_group"]
-    expected_keys = list(broad_metric_keys(FINE_TO_BROAD[position_group], config))
+    expected_keys = list(vector_feature_keys(FINE_TO_BROAD[position_group], config))
     if list(vector_row["metric_keys"]) != expected_keys:
         msg = (
             "stored vectors were built from a different metric set than "

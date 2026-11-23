@@ -13,7 +13,9 @@ from sklearn.decomposition import PCA
 
 from football_ai.metrics import MetricsConfig
 
-VECTOR_WIDTH = 35
+# Widest broad group: MID at 35 performance metrics + 2 role descriptors.
+# A test ties this to vector_feature_keys() so the two cannot drift.
+VECTOR_WIDTH = 37
 
 
 def zscore_cell(values: np.ndarray, imputed: np.ndarray) -> np.ndarray:
@@ -68,6 +70,9 @@ def sign_normalise(components: np.ndarray) -> np.ndarray:
     return components * signs[:, None]
 
 
+DESCRIPTOR_CATEGORY = "positioning"
+
+
 def role_scale_factors(metric_keys: Sequence[str], config: MetricsConfig) -> np.ndarray:
     """Per-dimension multipliers that give every category equal total weight.
 
@@ -76,9 +81,16 @@ def role_scale_factors(metric_keys: Sequence[str], config: MetricsConfig) -> np.
     intended weight ``1 / (C * k_c)`` — C categories, k_c metrics in this
     metric's category. Using the weight directly would square it and let a
     small category quietly dominate.
+
+    Keys absent from metrics.yaml are role descriptors (see
+    ``scouting.descriptors``) and form one category of their own. Dropping them
+    would silently remove dimensions the vector was built with; crashing would
+    make the descriptors unusable under this weighting.
     """
     by_key = {m.key: m for m in config.metrics}
-    categories = [by_key[key].category for key in metric_keys]
+    categories = [
+        by_key[key].category if key in by_key else DESCRIPTOR_CATEGORY for key in metric_keys
+    ]
     counts: dict[str, int] = {}
     for category in categories:
         counts[category] = counts.get(category, 0) + 1

@@ -6,6 +6,7 @@ import numpy as np
 
 from football_ai.metrics import load
 from football_ai.scouting.broad_groups import broad_metric_keys
+from football_ai.scouting.descriptors import ROLE_DESCRIPTORS, vector_feature_keys
 from football_ai.scouting.vectors import (
     fit_pca,
     pad_to,
@@ -100,6 +101,18 @@ def test_role_weights_give_every_category_equal_total():
     assert np.allclose(list(totals.values()), next(iter(totals.values())))
 
 
+def test_role_scale_factors_treat_descriptors_as_their_own_category():
+    """Role descriptors are not in metrics.yaml, so they have no category. They
+    form one of their own rather than crashing or being silently dropped."""
+    config = load()
+    keys = vector_feature_keys("ATT", config)
+    factors = role_scale_factors(keys, config)
+    assert len(factors) == len(keys)
+    descriptor_factors = factors[-len(ROLE_DESCRIPTORS) :]
+    # 4 metric categories in ATT + 1 descriptor category = 5, 2 descriptors.
+    assert np.allclose(descriptor_factors**2, 1.0 / (5 * len(ROLE_DESCRIPTORS)))
+
+
 def test_sign_normalise_makes_the_dominant_loading_positive():
     components = np.array([[-0.9, 0.1], [0.2, -0.95]])
     out = sign_normalise(components)
@@ -141,7 +154,7 @@ def test_fit_pca_projects_onto_sign_normalised_components():
 
 
 def test_pad_to_appends_zeros_and_keeps_the_prefix():
-    padded = pad_to(np.array([1.0, 2.0]), width=35)
-    assert padded.shape == (35,)
+    padded = pad_to(np.array([1.0, 2.0]), width=37)
+    assert padded.shape == (37,)
     assert np.allclose(padded[:2], [1.0, 2.0])
     assert np.all(padded[2:] == 0.0)

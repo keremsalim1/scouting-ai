@@ -28,6 +28,7 @@ from football_ai.data.db import connect, etl_dsn
 from football_ai.metrics import MetricsConfig
 from football_ai.scouting.broad_groups import FINE_TO_BROAD, broad_metric_keys
 from football_ai.scouting.calc import POSSESSION_ADJUSTABLE_UNITS, possession_adjust
+from football_ai.scouting.descriptors import ROLE_DESCRIPTORS, vector_feature_keys
 from football_ai.scouting.vectors import (
     VECTOR_WIDTH,
     fit_pca,
@@ -60,12 +61,29 @@ def fetch_rows(conn: psycopg.Connection) -> list[dict]:
         return cur.fetchall()
 
 
-def build_cells(rows: list[dict], config: MetricsConfig) -> dict[str, dict[tuple[str, str], dict]]:
+def fetch_descriptors(conn: psycopg.Connection) -> dict[tuple, dict]:
+    """Role descriptors per (comp, season, player_id).
+
+    A separate query rather than another join onto player_metrics: that view is
+    one row per player per metric, so joining here would repeat the same two
+    numbers ~30 times per player.
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            "select comp, season, player_id, action_x, action_lateral_dev "
+            "from football.player_action_position"
+        )
+        return {(r["comp"], r["season"], r["player_id"]): r for r in cur.fetchall()}
+
+
+def build_cells(
+    rows: list[dict], descriptors: dict[tuple, dict], config: MetricsConfig
+) -> dict[str, dict[tuple[str, str], dict]]:
     """Group metric rows into one matrix per (comp, broad) z-scoring cell.
 
     Returns ``{broad: {(comp, season): {"players": [...], "values": [...],
     "imputed": [...]}}}`` where ``values`` rows follow
-    ``broad_metric_keys(broad)`` order and ``imputed`` is a parallel boolean
+    ``vector_feature_keys(broad)`` order and ``imputed`` is a parallel boolean
     mask.
     """
     by_key = {m.key: m for m in config.metrics}
@@ -124,6 +142,16 @@ def build_cells(rows: list[dict], config: MetricsConfig) -> dict[str, dict[tuple
             row_values.append(float(raw))
             row_imputed.append(False)
 
+        # Role descriptors last, in ROLE_DESCRIPTORS order, so a dimension
+        # index means the same thing for every player in the group. A player
+        # with no pass coordinates has no position to describe - imputed, not
+        # zero, which would read as "played on his own goal line".
+        descriptor_row = descriptors.get(key)
+        for descriptor in ROLE_DESCRIPTORS:
+            value = descriptor_row.get(descriptor) if descriptor_row else None
+            row_values.append(0.0 if value is None else float(value))
+            row_imputed.append(value is None)
+
         cell = cells.setdefault(broad, {}).setdefault(
             (comp, season), {"players": [], "values": [], "imputed": []}
         )
@@ -143,14 +171,14 @@ def build_cells(rows: list[dict], config: MetricsConfig) -> dict[str, dict[tuple
 
 def build(conn: psycopg.Connection) -> dict[str, int]:
     config = mx.load()
-    cells = build_cells(fetch_rows(conn), config)
+    cells = build_cells(fetch_rows(conn), fetch_descriptors(conn), config)
     min_minutes = config.min_minutes
     built_at = datetime.now(UTC)
     written: dict[str, int] = {}
     records: list[tuple] = []
 
     for broad, by_cell in sorted(cells.items()):
-        metric_keys = list(broad_metric_keys(broad, config))
+        feature_keys = list(vector_feature_keys(broad, config))
         players: list[dict] = []
         zscored: list[np.ndarray] = []
         imputed_counts: list[int] = []
@@ -163,11 +191,11 @@ def build(conn: psycopg.Connection) -> dict[str, int]:
             players.extend(cell["players"])
 
         matrix = np.vstack(zscored)
-        scales = role_scale_factors(metric_keys, config)
+        scales = role_scale_factors(feature_keys, config)
         projection, n_components = fit_pca(matrix)
         per_weighting = {
-            "equal": (matrix, len(metric_keys)),
-            "role": (matrix * scales, len(metric_keys)),
+            "equal": (matrix, len(feature_keys)),
+            "role": (matrix * scales, len(feature_keys)),
             "pca": (projection, n_components),
         }
 
@@ -184,7 +212,7 @@ def build(conn: psycopg.Connection) -> dict[str, int]:
                         weighting,
                         str(pad_to(vector, VECTOR_WIDTH).tolist()),
                         dims,
-                        metric_keys,
+                        feature_keys,
                         n_imputed,
                         min_minutes,
                         built_at,

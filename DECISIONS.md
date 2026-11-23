@@ -967,3 +967,52 @@ Ayrıca: `role`'de tek metrikli `goalkeeping` kategorisinin (`saves_per90`) kale
 Performans: sorgu <200 ms (testle sabit), 1072 oyuncu × 3 ağırlıklandırma = 3216 vektör, tam build saniyeler. Yeniden build bit-bit aynı (md5 `78fc5d33c08d207937530c47d15ec0c9`) — PCA bileşenleri bu yüzden saklanmıyor.
 
 **Tarih.** 2026-11-19
+
+---
+
+## D-033: Rol betimleyicileri vektöre girdi, %90 tutmadı — ve nedeni ölçüldü
+
+**Bağlam.** D-032 pozisyon tutarlılığını %68,9 ile kapatmıştı ve açıklaması "AM/CM/DM gerçekten örtüşüyor" idi. Bu açıklama **ölçülmemişti** — bir gözlemi gerekçe gibi sunmuştu. Kullanıcı itiraz etti, haklıydı.
+
+**Ölçülen üç şey, sırayla.**
+
+*(1) Etiket gürültüsü hipotezi reddedildi.* "Gün 3'ün pozisyon oylaması belirsiz orta sahacılara gürültülü etiket veriyor" hipotezi makuldü: `position_share` ortalaması AM'de 0,665, DM'de 0,740 (CB'de 0,950). Değerlendirmeyi `position_share >= 0.8` oyuncularla sınırladım: manşet yalnızca **%68,9 → %70,5** oldu ve **DM düştü** (%42 → %34). Etiketler tavan değildi.
+
+*(2) Asıl eksik mekânsal boyuttu.* `metrics.yaml`'daki 38 metriğin tamamı hacim veya oran; hiçbiri konum taşımıyor. Oysa DM/CM/AM ayrımı tanımı gereği mekânsal. Pas başlangıç noktasından ölçüldü:
+
+| | ort. x | sapma | merkez hattından uzaklık | sapma |
+| --- | --- | --- | --- | --- |
+| DM | 50,6 | 3,2 | 21,7 | 3,2 |
+| CM | 53,2 | 4,1 | 23,1 | 3,0 |
+| AM | 60,5 | 3,5 | 26,5 | 2,8 |
+| FW | 62,6 | 3,0 | 24,6 | 4,5 |
+| W | 64,1 | 4,1 | 32,1 | 3,2 |
+| CB | 38,5 | 3,6 | 22,4 | 4,5 |
+| FB | 52,7 | 4,1 | 36,8 | 2,6 |
+
+AM–CM derinlikte ve FW–W genişlikte ~1,9 sd ayrı; CB–FB genişlikte ~4 sd. Vektördeki hiçbir metrik bu ayırt ediciliğe yaklaşmıyordu.
+
+**Karar.** İki betimleyici eklendi (`action_x`, `action_lateral_dev`; migration 007, `player_action_position` view). **`config/metrics.yaml`'a girmediler** — o dosya her metriğe `higher_is_better` dayatıyor ve yüzdelik katmanı "100 her zaman en iyi" garantisi veriyor; saha konumunun iyi/kötü yönü yoktur. Zorlamak her oyuncu profiline anlamsız bir "konumlanma yüzdeliği" ve her Gün 7 radarına saçma bir eksen eklerdi. Vektör bu yüzden bilinçli olarak **metrikler + betimleyiciler**; `vector_feature_keys()` ikisini birleştirir ve staleness kontrolü artık onu karşılaştırır. Ham `y` değil merkez hattından uzaklık: sol ve sağ bek aynı rolün aynasıdır.
+
+**Sonuç/ölçüm.** Manşet **%68,9 → %70,7** (kazanan `pca` → `role` oldu). **Tahminim %75–80'di ve yanlıştı; sayıyı düzeltiyorum.**
+
+| Grup | Taban | önce (`pca`) | sonra (`role`) | fark |
+| --- | --- | --- | --- | --- |
+| AM | %20 | %58,5 | **%65,1** | +6,6 |
+| FB | %48 | %92,6 | **%96,2** | +3,6 |
+| W | %37 | %61,0 | **%64,6** | +3,6 |
+| CB | %52 | %94,6 | %96,2 | +1,6 |
+| DM | %26 | %41,5 | %42,3 | +0,8 |
+| FW | %63 | %79,8 | %79,4 | −0,4 |
+| CM | %54 | %54,0 | **%50,9** | −3,1 |
+
+*(3) Kalan açık yapısal, ve bu sefer ölçülmüş.* Betimleyiciler **uçlara yardım etti, ortaya zarar verdi.** CM, derinlik ekseninde DM ile AM'nin arasında duruyor, yani her iki taraftan komşu topluyor — karışıklık tablosunda CM'nin komşularının %21'i AM, %28'i DM. Bir eksende sıralı üç sınıfta ortadaki sınıf tanım gereği ayrıştırılamaz.
+
+**Asıl bulgu:** roller gerçekten ayrıksa vektör **%96** yapıyor (CB/FB, genişlikte 4 sd); süreklilikse yapamıyor **ve yapmamalı** — bir DM'nin en benzerinin derin bir CM olması doğru scouting cevabıdır, hata değil. %90 hedefi, verinin tek sürekli eksen taşıdığı yerde ayrık sınıf ayırt etmesini istiyor. Hedef bu haliyle yalnızca ayrık-rol grupları için anlamlı.
+
+**Değerlendirilen alternatifler.**
+- *Betimleyicileri `metrics.yaml`'a koymak* — `higher_is_better` sözleşmesini bozar, profil ve radarı kirletir.
+- *Kabul metriğini geniş gruba çevirmek* — %100'e yakın çıkar, hiçbir şey ölçmez.
+- *CM etiketini kaldırmak / DM+CM birleştirmek* — Gün 3'ün pozisyon şemasını benzerlik uğruna değiştirmek; etki alanı çok geniş, ayrı bir karar.
+
+**Tarih.** 2026-11-19
