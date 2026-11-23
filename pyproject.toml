@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.6.0",
+    "sentence-transformers>=6.3.0",
     "sqlglot>=30.31.0",
 ]
 
