@@ -28,7 +28,7 @@ CI yerelde doğrulandı; GitHub Actions'ta henüz koşmadı.
 | Gün | Öğrenme | Görev | Kabul kriteri |
 | --- | --- | --- | --- |
 | 7 | Scouting metodolojisi, rol profilleri, radar, topa sahip olma düzeltmesi | `player_profile(player_id)` + radar | Profil < 1 sn; dakika, pozisyon, kapsam her zaman var |
-| 8 | Benzerlik: özellik seçimi, lig içi z-skor, kosinüs, PCA | Pozisyona özel vektörler pgvector'da; `similar_players(...)`; 3 ağırlık konfigürasyonu (eşit / rol / PCA) | Pozisyon tutarlılığı ≥ %90; 10 sorgu elle incelenmiş; kazanan DECISIONS'ta; sorgu < 200 ms |
+| 8 | Benzerlik: özellik seçimi, lig içi z-skor, kosinüs, PCA | Pozisyona özel vektörler pgvector'da; `similar_players(...)`; 3 ağırlık konfigürasyonu (eşit / rol / PCA) | Pozisyon tutarlılığı: ayrık roller (GK, CB, FB) ≥ %90, sürekli roller (DM/CM/AM, W/FW) için hedef yok — nedeni ölçülüp belgelenmiş olmak yeterli (bkz. D-032); 10 sorgu elle incelenmiş; kazanan DECISIONS'ta; sorgu < 200 ms |
 | 9 | RAG korpus tasarımı, chunking, metadata | `kb/` ~20 metodoloji notu + veri sözlüğü + metrik sözlüğü; `make ingest-kb` | ≥ 25 doküman; her chunk'ta kaynak ve konu; kopya yok |
 | 10 | Hybrid search, RRF, reranker, cevapsızlık | `methodology_search` | Her cevapta atıf; korpus dışı soruda uydurma yok |
 | 11 | RAG değerlendirmesi | 50 soruluk altın set; ablation (dense / hybrid / +reranker); MLflow | Recall@5 ≥ %85; faithfulness ≥ 0,85; tuzak reddetme ≥ %80 |
