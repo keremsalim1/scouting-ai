@@ -1016,3 +1016,25 @@ AM–CM derinlikte ve FW–W genişlikte ~1,9 sd ayrı; CB–FB genişlikte ~4 s
 - *CM etiketini kaldırmak / DM+CM birleştirmek* — Gün 3'ün pozisyon şemasını benzerlik uğruna değiştirmek; etki alanı çok geniş, ayrı bir karar.
 
 **Tarih.** 2026-11-19
+
+---
+
+## D-034: RAG kb/ korpusu — bge-m3 (yalnızca dense), başlık bazlı chunking, sabit topic constraint'i
+
+**Bağlam.** Gün 9, Gün 10'un `methodology_search` aracının ve Hafta 3'ün scouting-raporu ajanının okuyacağı metodoloji içeriğini üretiyor. "LLM sayı üretmez" kuralının metin karşılığı: metodoloji bilgisi de modelin eğitim verisinden hatırlanmamalı, projenin kendi yazdığı, kaynağı gösterilebilir metinden gelmeli.
+
+**Karar.**
+- **Embedding modeli:** `bge-m3`, `sentence-transformers` üzerinden lokalde çalıştırılıyor (`BAAI/bge-m3`, dense çıktı 1024 boyut). API maliyeti yok (öğrenci bütçesi kısıtı). bge-m3 aynı zamanda sparse çıktı da üretiyor ama bu gün yalnızca dense vektör saklanıyor — sparse/multi-vector Gün 10'un hibrit arama işi. `FlagEmbedding` yerine `sentence-transformers` seçildi: daha hafif bağımlılık zinciri, bu gün için tek ihtiyaç olan dense encode'u doğrudan destekliyor.
+- **Chunking:** sabit karakter/token penceresi değil, markdown `## ` başlıklarına göre bölme; 500 kelimeyi aşan bölümler paragraf sınırında ikiye ayrılıyor. Gerekçe: sabit kesim cümle ortasından kesebilir, başlık zaten yazarın kurduğu mantıksal birim.
+- **`topic` sabit bir migration-level check constraint** (`infra/migrations/008_kb.sql`, `player_vectors_weighting_check`'i mirror ediyor): 22 sabit değer, kb/ korpusunun A (8 metrik kategorisi) / B (9 proje metodolojisi) / C (5 veri sözlüğü) gruplarına karşılık geliyor. Yeni bir *konu* eklemek migration gerektiriyor — bu sürtünme bilinçli, korpusun şekli şemada görünür kalsın diye.
+- **`doc_id` = dosya adı** (frontmatter alanı değil); **`content_hash`** yalnızca boşluk normalizasyonu yapıyor (kelime/noktalama değişikliği farklı hash üretir — fuzzy eşleştirme değil, kazara kopya tespiti).
+- `make ingest-kb` CI'da çalışmıyor (Gün 6 kuralı: "CI'da LLM yok, ETL yok" aynı burada da geçerli) — testler sahte/mock `embed_fn` ile çalışıyor, gerçek model yalnızca bu komutla elle indiriliyor.
+
+**Değerlendirilen alternatifler.**
+- *Sabit boyutlu sliding-window chunking* — uygulaması basit ama cümle ortasından kesme riski taşıyor; başlık bazlı bölme reddedildi gerekçesiyle elendi.
+- *`multilingual-e5-large`* — de çok dilli ve çalışabilirdi, ama sparse çıktı üretmiyor; Gün 10'un hibrit aramasında ikinci bir modele ihtiyaç doğururdu.
+- *`topic`'i yalnızca uygulama seviyesinde doğrulamak* — migration'da iz bırakmaz, şemadan korpusun kapsamı okunamaz hale gelir.
+
+**Sonuç/ölçüm.** 22 dosya → **50 chunk** (hedef ≥25'in oldukça üzerinde; `metric-glossary.md` tek başına 8 chunk, kalan 21 dosya 2'şer chunk üretti — hiçbiri boş bölüm içermedi). İkinci `make ingest-kb` çalıştırması aynı sayıyı veriyor, `duplicates_skipped=0` (idempotent, kopya yok). `count(*) = count(distinct content_hash) = 50`; her satırda `source`/`title`/`topic` dolu. 446 birim + 163 db testi yeşil.
+
+**Tarih.** 2026-11-24
