@@ -102,6 +102,9 @@ MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
 build-vectors:
 	$(UV) run python scripts/build_vectors.py
 
+ingest-kb:
+	$(UV) run python scripts/ingest_kb.py
+
 eval-similarity:
 	$(UV) run python scripts/eval_similarity.py
 
