@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import psycopg
 from psycopg.rows import dict_row
 
@@ -45,6 +46,15 @@ class TextSearchConfigMismatchError(Exception):
     ever used a different one, the search would silently run against a
     differently-tokenized query - plausible wrong passages rather than an
     error, which is the failure this project refuses to ship.
+    """
+
+
+class EmptyCorpusError(Exception):
+    """Raised when football.kb_chunks has no rows.
+
+    Zero results from an empty table is indistinguishable from a correct
+    abstention, and a caller would read it as "the corpus does not cover
+    this" - so it raises instead.
     """
 
 
@@ -125,3 +135,33 @@ def lexical_search(
         )
         rows = cur.fetchall()
     return _to_hits(rows, "ts_rank_score")
+
+
+def dense_search(conn: psycopg.Connection, embedding: np.ndarray, *, limit: int) -> list[Hit]:
+    """Nearest neighbours by cosine distance, scored as cosine *similarity*.
+
+    `1 - distance` rather than the raw `<=>` distance so that every Hit.score
+    in this module means "higher is more relevant", the same direction as
+    `ts_rank` and the reranker. A consumer that has to remember which of three
+    scores is inverted will eventually forget.
+    """
+    vector = "[" + ",".join(str(float(value)) for value in embedding) + "]"
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(
+            f"select {_HIT_COLUMNS}, "
+            "1 - (embedding <=> %s::vector) as similarity "
+            "from football.kb_chunks "
+            # id breaks ties, as in lexical_search: equidistant chunks must not
+            # change places between calls.
+            "order by embedding <=> %s::vector, id "
+            "limit %s",
+            (vector, vector, limit),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        msg = (
+            "football.kb_chunks is empty; run `make ingest-kb` before searching. "
+            "Returning zero passages here would look like a correct abstention."
+        )
+        raise EmptyCorpusError(msg)
+    return _to_hits(rows, "similarity")
