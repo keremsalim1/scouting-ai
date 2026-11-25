@@ -1,0 +1,35 @@
+# Day 10 retrieval parameters. Runtime authority, the same posture as
+# config/metrics.yaml: day 11 tunes these numbers while measuring, and tuning
+# must not need a code edit or a migration.
+version: 1
+
+# Postgres text search configuration. Baked into 009_kb_fts.sql's generated
+# column (a stored generated column needs an immutable expression), so this
+# value exists to keep the query side in step with the index - changing it
+# means a new migration, not just an edit here. `simple` (case folding, no
+# stemming) is the day-10 choice for a mixed Turkish/English corpus: a
+# Turkish stemmer mangles `higher_is_better`, an English one mangles the
+# prose. Day 11 measures it.
+text_search_config: simple
+
+# Reciprocal rank fusion constant from the original paper. Large relative to
+# the candidate depth, so the curve is gentle and rank 1 does not dominate.
+rrf_k: 60
+
+dense_candidates: 20
+lexical_candidates: 20
+
+# How many fused candidates reach the cross-encoder. Separate from the two
+# retriever depths because fusion can surface up to their sum, and the
+# reranker is the expensive stage - this is the number that bounds its cost.
+rerank_candidates: 20
+
+top_n: 5
+
+# Abstention thresholds. Placeholders until scripts/calibrate_abstain.py
+# measures them; the values below are deliberately wrong-looking so an
+# unmeasured threshold cannot be mistaken for a measured one.
+dense_abstain_threshold: 0.5
+rerank_abstain_threshold: 0.5
+
+rerank_model: BAAI/bge-reranker-v2-m3
