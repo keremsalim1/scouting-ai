@@ -26,10 +26,27 @@ rerank_candidates: 20
 
 top_n: 5
 
-# Abstention thresholds. Placeholders until scripts/calibrate_abstain.py
-# measures them; the values below are deliberately wrong-looking so an
-# unmeasured threshold cannot be mistaken for a measured one.
-dense_abstain_threshold: 0.5
-rerank_abstain_threshold: 0.5
+# Abstention thresholds, measured by scripts/calibrate_abstain.py over
+# evals/rag/abstain_calibration.yaml (10 covered + 10 deliberately uncovered
+# questions). Each value is the midpoint of the gap between the two groups.
+#
+#   dense / hybrid   lowest in-corpus 0.5453, highest out-of-corpus 0.5222
+#                    -> gap 0.0231, midpoint 0.5338
+#   hybrid_rerank    lowest in-corpus 0.1386, highest out-of-corpus 0.0120
+#                    -> gap 0.1266, midpoint 0.0753
+#
+# The gap is the number to read, not the threshold. Cosine similarity barely
+# separates covered from uncovered questions - 0.0231 is about one question's
+# worth of noise - so `dense` and `hybrid` abstain on thin evidence and one
+# new calibration question could move the cut. The cross-encoder's gap is
+# 5.5x wider and every uncovered question scored under 0.013, which is why
+# abstention is trustworthy only in hybrid_rerank. Day 11 re-measures both
+# against the 50-question gold set.
+#
+# 0.0753 looks low for a "relevant" cut and is nevertheless correct: the
+# binding constraint is the lowest covered question (0.1386), not what reads
+# well.
+dense_abstain_threshold: 0.5338
+rerank_abstain_threshold: 0.0753
 
 rerank_model: BAAI/bge-reranker-v2-m3

@@ -1,0 +1,59 @@
+# Abstention calibration set for day 10.
+#
+# Not a gold set: there is no expected ranking here and nothing is scored for
+# recall. The only question these questions answer is "where do the relevance
+# score distributions of covered and uncovered questions separate", so that
+# config/rag.yaml's two thresholds are measured rather than guessed.
+#
+# Day 11's 50-question gold set extends this file; `out_of_corpus` is already
+# the trap-rejection set it needs.
+version: 1
+
+# Spread across the three kb/ groups: metric categories (A), project
+# methodology (B), data dictionary (C).
+in_corpus:
+  - question: "Yüzdelikler nasıl hesaplanıyor?"
+    expect_topic: percentile_methodology
+  - question: "Minimum dakika eşiği neden 900?"
+    expect_topic: minutes_threshold
+  - question: "Per-90 değerleri nasıl hesaplanıyor?"
+    expect_topic: per90_normalization
+  - question: "Possession-adjustment hangi metriklere uygulanıyor?"
+    expect_topic: possession_adjustment
+  - question: "Benzerlik skoru oyuncu kalitesini mi gösterir?"
+    expect_topic: similarity_meaning
+  - question: "player_season ile player_season_club arasındaki fark nedir?"
+    expect_topic: season_vs_club
+  - question: "Bir santrforun şut metriklerini nasıl okumalıyım?"
+    expect_topic: shooting
+  - question: "Kaleci metrikleri neyi ölçüyor?"
+    expect_topic: goalkeeping
+  - question: "G eksi xG tek sezonda ne kadar güvenilir?"
+    expect_topic: xg_regression
+  - question: "Possession verisi nereden geliyor, sınırları ne?"
+    expect_topic: possession_proxy
+
+# Deliberately uncovered: the corpus is scouting methodology and this
+# project's own data dictionary. It contains no market values, no contracts,
+# no injuries, no fixtures, and nothing about other sports.
+out_of_corpus:
+  - question: "Mbappé'nin maaşı ne kadar?"
+    why: salaries and contracts are not in the corpus
+  - question: "Haaland'ın piyasa değeri kaç euro?"
+    why: transfer market valuations are not in the corpus
+  - question: "Arsenal'in 2026/27 fikstürü nasıl?"
+    why: 2026/27 is out of project scope, and no fixture data is stored
+  - question: "Bu sezon en çok sakatlanan oyuncu kim?"
+    why: no injury data anywhere in the project
+  - question: "NBA'de en iyi üçlük yüzdesi kimde?"
+    why: another sport entirely
+  - question: "İstanbul'da hava yarın nasıl olacak?"
+    why: unrelated domain, tests that topical drift is refused
+  - question: "Hangi oyuncuyu transfer etmeliyiz?"
+    why: asks for a decision the corpus deliberately never makes
+  - question: "Bana bir bonservis bedeli hesapla"
+    why: a number the corpus cannot source; the project forbids inventing one
+  - question: "asdkjh qwlkej zxcvb"
+    why: nonsense string, the degenerate case
+  - question: "Real Madrid'in stadyum kapasitesi kaç?"
+    why: club facts are not scouting methodology

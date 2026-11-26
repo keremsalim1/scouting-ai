@@ -34,6 +34,19 @@ CI yerelde doğrulandı; GitHub Actions'ta henüz koşmadı.
 | 11 | RAG değerlendirmesi | 50 soruluk altın set; ablation (dense / hybrid / +reranker); MLflow | Recall@5 ≥ %85; faithfulness ≥ 0,85; tuzak reddetme ≥ %80 |
 | 12 | FastAPI, Streamlit, uçtan uca test | `/sql`, `/players/{id}/profile`, `/players/{id}/similar`, `/kb/ask`; Streamlit oyuncu sayfası | Uçtan uca testler yeşil; README güncel |
 
+### Gün 10 durumu (2026-11-26) — tamamlandı
+**Kabul kriteri karşılandı.** Her pasajda `source` + `title` (ikisi de şemada `not null`,
+yani atıf sözleşme değil garanti); korpus dışı 10 sorunun **10'unda** `hybrid_rerank` susuyor.
+
+Ölçülmüş susma aralığı: kosinüs 0,0231 — reranker **0,1266** (5,5 kat). Susma yalnızca
+`hybrid_rerank`'te güvenilir; bu, reranker'ın maliyetini hak ettiğinin Gün 10'daki kanıtı.
+Gecikme dense/hybrid 0,34 sn, `hybrid_rerank` 26,6 sn (CPU).
+
+Gerçek çıktıya bakarak bulunan iki hata — çift sigmoid (alakasız her pasaj tam 0,500) ve
+leksik VE semantiği (soru kelimesi tüm leksik listeyi düşürüyordu, hibrit sessizce "dense +
+süs" olmuştu). İkisi de düzeltildikten sonra aynı sorgu çifti 0,973 / 0,000 veriyor.
+481 birim + 176 db testi yeşil. Ayrıntı D-035.
+
 ## Hafta 3 — Ajan, scouting raporları, xG analizi → `v0.3`
 
 | Gün | Öğrenme | Görev | Kabul kriteri |

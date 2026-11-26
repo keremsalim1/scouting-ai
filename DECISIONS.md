@@ -1038,3 +1038,50 @@ AM–CM derinlikte ve FW–W genişlikte ~1,9 sd ayrı; CB–FB genişlikte ~4 s
 **Sonuç/ölçüm.** 22 dosya → **50 chunk** (hedef ≥25'in oldukça üzerinde; `metric-glossary.md` tek başına 8 chunk, kalan 21 dosya 2'şer chunk üretti — hiçbiri boş bölüm içermedi). İkinci `make ingest-kb` çalıştırması aynı sayıyı veriyor, `duplicates_skipped=0` (idempotent, kopya yok). `count(*) = count(distinct content_hash) = 50`; her satırda `source`/`title`/`topic` dolu. 446 birim + 163 db testi yeşil.
 
 **Tarih.** 2026-11-24
+
+---
+
+## D-035: RAG retrieval — hibrit arama, RRF, cross-encoder reranker ve ölçülmüş susma
+
+**Bağlam.** Gün 9 `football.kb_chunks`'a 50 chunk ve bge-m3 dense vektörlerini yazdı ama o tabloyu hiç sorgulamadı. Gün 10 üstüne arama katmanını koyuyor ve `methodology_search` olarak açıyor — Gün 13'ün LangGraph ajanının, soru sayı değil *metodoloji* sorduğunda çağıracağı araç.
+
+Kabul kriterleri "her cevapta atıf" ve "korpus dışı soruda uydurma yok". İkincisi bir prompt sorunu değil: vektör araması *her zaman* en yakın komşusunu döndürür, çünkü "burada yakın bir şey yok" ANN aramasının verebileceği bir cevap değildir. Mbappé'nin maaşını sorarsan possession düzeltmesi hakkında beş pasaj verir. Uydurma orada başlar — ajan alakasız ama makul bir metin alır ve ondan cümle kurar. Bu yüzden susma LLM'in *altında*, retrieval katmanında olmak zorunda.
+
+**Karar.**
+- **Araç bulur ve atıf verir, cevap yazmaz.** Pasajlardan metin kurmak ajanın işi (Gün 13). Üç gerekçe: projenin kuralı LLM'in araç çıktısını yorumlaması, üretmemesi; araç içinde ikinci bir LLM katmanı özetin özetini çıkarıp hatasını büyütür; ve pasaj döndüren bir araç recall@5 için bedelsiz puanlanabilirken paragraf döndüren bir araç hakem gerektirir — Gün 6 kusurlu hakemin kusurlu modelden daha pahalı olduğunu gösterdi.
+- **İki retriever, farklı yerlerde başarısız oldukları için.** Dense (pgvector kosinüs) anlamı yakalar; tam teknik terimlerde (`npxg_per_shot`, `player_season_club`) zayıftır — bge-m3'e npxG ile xA neredeyse aynı gelir. Postgres full-text (`009_kb_fts.sql`: `content_tsv` generated kolon + GIN) tam terimde güçlüdür. Füzyonun işe yaramasının tek nedeni bu ayrışma.
+- **Metin arama konfigürasyonu `simple`** (yalnız harf küçültme, kök bulma yok). Korpus karışık dilli: aynı cümlede Türkçe anlatım ve İngilizce tanımlayıcılar (`higher_is_better`). Türkçe kök bulucu tanımlayıcıları, İngilizce olanı anlatımı bozar. **Konfigürasyon şemaya çakılı:** saklanan generated kolon değişmez bir ifade istiyor, dolayısıyla sözlüğü değiştirmek yeni bir migration gerektirir. `config/rag.yaml`'daki değer yalnız sorgu tarafını indeksle aynı tutmak için var ve uyuşmazlıkta kod yüksek sesle patlar — sessizce farklı tokenize edilmiş bir arama, makul görünen yanlış pasaj döndürür ki bu projenin reddettiği hata türüdür.
+- **Leksik sorgu terimlerin VEYA'sı, VE'si değil.** `websearch_to_tsquery` ve `plainto_tsquery` ikisi de VE üretir; `simple`'da durak kelime listesi olmadığı için soru kelimeleri zorunlu şart olur. Ölçüldü: `player_season_club nedir?` sorgusu korpusta hiç geçmeyen "nedir"i şart koştuğu için leksik listeyi boş döndürüyordu, oysa çıplak terim buluyordu — yani hibrit arama sessizce "dense + süs"e dönüşmüştü (tasarım dokümanının adını koyduğu anti-hedef). VE filtreleme semantiğidir; retrieval ayrışma + sıralama ister, `ts_rank` "üç nadir terim eşleşti"yi "bir yaygın terim eşleşti"den ayıran şeydir. Lexeme'ler Postgres'in kendi parser'ından alınır (`unnest(to_tsvector(...))`), böylece tokenizasyon indeksle birebir aynıdır ve kullanıcı metni tsquery'ye sözdizimi olarak hiç ulaşmaz.
+- **Füzyon RRF (`k=60`), skor normalizasyonu değil.** Kosinüs [-1,1] sınırlı, `ts_rank` sınırsız ve metin uzunluğuna bağlı; ikisini ortak ölçeğe çevirmek kimsenin ölçmediği dağılımlar hakkında tahmin yürütmektir. Sıralar hiçbir varsayım gerektirmeden karşılaştırılabilir. Gün 6'nın SQL hakeminde vardığı ilkenin aynısı: büyüklükler karşılaştırılamazken sıra karşılaştırılabilir.
+- **Reranker (`bge-reranker-v2-m3`) en sonda, 20 aday üzerinde.** Retriever'lar bi-encoder: her chunk'ın vektörü soru var olmadan hesaplanmıştı. Cross-encoder soruyu ve pasajı *birlikte* okur ve daha zor soruya cevap verir. Bedeli çift başına bir ileri geçiş.
+- **Susma ne RRF skorundan ne dönen `top_n`'den okunur.** RRF yalnız sıraların fonksiyonu: anlamsız bir sorgunun birincisi mükemmel eşleşmeyle aynı `1/(k+1)+1/(k+1)` puanını alır. Dönen beş satırdan okumak da yanlış: "korpus bu soruyu kapsıyor mu" sorunun korpusa karşı bir özelliğidir, sıralamanın hangi satırları seçtiğinin değil — ve füzyon en güçlü dense eşleşmeyi ilk beşin dışına itebildiği için `hybrid`, `dense`'in cevapladığı soruda susar, Gün 11'in ablation'ı da sıralama kalitesiyle susma kuplajını tek sayıda karıştırır. Sinyal **tüm aday listesi** üzerinden alınır: `dense`/`hybrid` için kosinüs, `hybrid_rerank` için cross-encoder puanı.
+- **Üç mod ayrı koşturulabilir** (`dense` / `hybrid` / `hybrid_rerank`), çünkü Gün 11 tam bu üçünü karşılaştırıyor ve yalnız tam hat içinde çalışabilen bir mod ablation'a giremez.
+
+**Değerlendirilen alternatifler.**
+- *Araç içinde LLM'le cevap yazmak* — ikinci bir özet katmanı, ücretli çağrı (öğrenci bütçesi) ve recall@5 yerine hakem gerektirir.
+- *bge-m3'ün sparse çıktısını ikinci retriever yapmak* — "hibrit"i karşılamak için gerekmiyor; depolama formatı ve bir model çağrısı daha ekler, ölçülmüş kazanç yok. Postgres full-text zaten leksik retriever.
+- *Skorları normalize edip ağırlıklı toplamak* — ölçülmemiş dağılımlar üzerine kurulu, RRF'in reddettiği tahmin.
+- *Türkçe sözlük* — tanımlayıcıları bozar; Gün 11 ölçerse migration ile değişir.
+- *Eşikleri yuvarlak sayı seçmek* — tam olarak projenin reddettiği hamle.
+
+**Sonuç/ölçüm.**
+
+*Susma eşikleri* (`scripts/calibrate_abstain.py`, `evals/rag/abstain_calibration.yaml`: 10 kapsanan + 10 kasıtlı kapsanmayan soru):
+
+| mod | en düşük korpus-içi | en yüksek korpus-dışı | aralık | eşik | ort. gecikme |
+| --- | --- | --- | --- | --- | --- |
+| dense | 0,5453 | 0,5222 | 0,0231 | 0,5338 | 0,34 sn |
+| hybrid | 0,5453 | 0,5222 | 0,0231 | 0,5338 | 0,34 sn |
+| hybrid_rerank | 0,1386 | 0,0120 | **0,1266** | 0,0753 | **26,6 sn** |
+
+Okunacak sayı eşik değil **aralık**. Kosinüs benzerliği kapsanan ile kapsanmayanı neredeyse ayırmıyor — 0,0231 bir sorunun gürültüsü kadar — yani `dense` ve `hybrid` ince kanıtla susuyor ve tek bir yeni kalibrasyon sorusu kesme noktasını oynatabilir. Cross-encoder'ın aralığı **5,5 kat** geniş ve kapsanmayan on sorunun **tamamı** 0,013'ün altında kaldı. **Susma yalnızca `hybrid_rerank`'te güvenilir**, ve bu reranker'ın maliyetini hak ettiğinin Gün 10'daki kanıtı. Korpus dışı susma: `hybrid_rerank`'te 10/10.
+
+*İki ölçülmüş hata, ikisi de gerçek çıktıya bakarak bulundu:*
+1. **Çift sigmoid.** `sentence-transformers` bge-reranker'ın sigmoid'ini `predict()` içinde zaten uyguluyor; üstüne bir sigmoid daha [0,1]'i [0,5; 0,731]'e sıkıştırıyordu. Parmak izi şuydu: korpus dışı her pasaj tam **0,500** (= `sigmoid(0)`), en iyi korpus içi pasaj **0,726** (= `sigmoid(0,97)`). Yani 0,97'lik bir olasılık sessizce eziliyor ve eşiğin oturacağı aralık hiç kalmıyordu. Düzeltmeden sonra aynı iki sorgu **0,973** ve **0,000**.
+2. **Leksik VE semantiği** (yukarıda). Düzeltmeden sonra `player_season_club nedir?` sorgusunda doğru chunk hem dense #1 (0,639) hem leksik #1 (`ts_rank` 0,4437), RRF 0,03279 — tek listede kalan bir sonucun aldığı 0,01639'un iki katı. Füzyonun ölçülmüş katkısı bu.
+
+*Gecikme.* Reranker sorgu başına 26,6 sn (CPU, 20 aday); dense ve hybrid 0,34 sn. Tasarım dokümanının kısıtı bunu baştan kabul ediyor ("50 chunk küçük bir korpus; gecikme hedefi burada ilginç değil, doğruluk ve susma ilginç"), o yüzden `rerank_candidates` 20'de bırakıldı. Ölçeklenme sınırı, hata değil; Gün 11 isterse 10'a düşürüp yeniden ölçer.
+
+*Testler.* 481 birim + 176 veritabanı testi yeşil. `pytest -m db` sonrası 3 test atlanır (`kb_chunks has 2 rows, not the real corpus; run make ingest-kb`): Gün 9'un `test_rag_ingest_db.py` testi sahte korpusu **commit** ediyor, bu yüzden gerçek korpusa bakan testler sıra bağımlı. Atlama mesajı çözümü söylüyor; `make ingest-kb` korpusu 50 chunk'a geri getiriyor.
+
+**Tarih.** 2026-11-26
