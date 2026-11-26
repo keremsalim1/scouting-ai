@@ -109,8 +109,11 @@ build-vectors:
 ingest-kb:
 	$(UV) run python scripts/ingest_kb.py
 
+# Q is quoted: unquoted, an apostrophe ("Mbappé'nin maaşı") is a shell syntax
+# error and a `*` expands to a directory listing that silently becomes part of
+# the query. The second one is worse than the crash.
 kb-search:
-	$(UV) run python scripts/kb_search.py $(Q) --mode $(MODE)
+	$(UV) run python scripts/kb_search.py --mode $(MODE) -- "$(Q)"
 
 eval-similarity:
 	$(UV) run python scripts/eval_similarity.py

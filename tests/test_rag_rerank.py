@@ -24,8 +24,42 @@ class _FakeCrossEncoder:
 
 def test_score_pairs_the_query_with_every_passage():
     fake = _FakeCrossEncoder([1.0, -2.0])
-    Reranker(model=fake).score("q", ["p1", "p2"])
+    Reranker(model=fake, output_scale="logit").score("q", ["p1", "p2"])
     assert fake.seen == [("q", "p1"), ("q", "p2")]
+
+
+def test_score_is_not_affected_by_which_other_passages_share_the_batch():
+    """A relevance score must be a function of (query, passage), nothing else.
+
+    Inferring the scale from the observed values made it batch-dependent: one
+    weakly-negative candidate flipped the whole batch into the sigmoid branch
+    and nearly doubled an unrelated passage's reported score, so
+    `rerank_score` could not be compared across queries - the one thing a
+    relevance score is for.
+    """
+    alone = Reranker(model=_FakeCrossEncoder([0.30, 0.40]), output_scale="logit").score(
+        "q", ["a", "b"]
+    )
+    with_neighbour = Reranker(
+        model=_FakeCrossEncoder([0.30, 0.40, -0.01]), output_scale="logit"
+    ).score("q", ["a", "b", "c"])
+    assert alone[0] == pytest.approx(with_neighbour[0])
+    assert alone[1] == pytest.approx(with_neighbour[1])
+
+
+def test_score_is_monotone_in_the_model_output():
+    # inferring the scale per batch made a HIGHER model output produce a LOWER
+    # score across the [0, 1] boundary: 0.99 -> 0.99 but 1.01 -> 0.733
+    lower = Reranker(model=_FakeCrossEncoder([0.99]), output_scale="logit").score("q", ["a"])
+    higher = Reranker(model=_FakeCrossEncoder([1.01]), output_scale="logit").score("q", ["a"])
+    assert higher[0] > lower[0]
+
+
+def test_score_rejects_output_that_contradicts_the_declared_scale():
+    # a library or model-config change that starts emitting logits must be
+    # loud, not silently rescaled
+    with pytest.raises(ValueError, match="probability"):
+        Reranker(model=_FakeCrossEncoder([4.0])).score("q", ["a"])
 
 
 def test_score_passes_through_output_that_is_already_a_probability():
@@ -48,7 +82,9 @@ def test_score_passes_through_output_that_is_already_a_probability():
 def test_score_maps_logits_through_a_sigmoid():
     # raw bge-reranker output is an unbounded logit; a threshold in
     # config/rag.yaml has to be a readable number, so it is squashed to [0, 1]
-    out = Reranker(model=_FakeCrossEncoder([0.0, 4.0, -4.0])).score("q", ["a", "b", "c"])
+    out = Reranker(model=_FakeCrossEncoder([0.0, 4.0, -4.0]), output_scale="logit").score(
+        "q", ["a", "b", "c"]
+    )
     assert out[0] == pytest.approx(0.5)
     assert out[1] > 0.98
     assert out[2] < 0.02
@@ -56,7 +92,9 @@ def test_score_maps_logits_through_a_sigmoid():
 
 
 def test_score_preserves_the_order_of_the_logits():
-    out = Reranker(model=_FakeCrossEncoder([-1.0, 3.0, 1.0])).score("q", list("abc"))
+    out = Reranker(model=_FakeCrossEncoder([-1.0, 3.0, 1.0]), output_scale="logit").score(
+        "q", list("abc")
+    )
     assert list(np.argsort(-out)) == [1, 2, 0]
 
 

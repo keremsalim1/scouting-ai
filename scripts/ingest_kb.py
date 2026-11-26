@@ -21,6 +21,9 @@ def main() -> None:
     conn = connect(etl_dsn())
     embedder = Embedder()
     result = ingest(conn, KB_DIR, embedder.embed)
+    # ingest() deliberately does not commit: the transaction boundary belongs
+    # here, so the test suite can roll back and leave the real corpus intact.
+    conn.commit()
     print(
         f"documents={result.documents} total_chunks={result.total_chunks} "
         f"duplicates_skipped={result.duplicate_chunks_skipped}"

@@ -36,16 +36,21 @@ CI yerelde doğrulandı; GitHub Actions'ta henüz koşmadı.
 
 ### Gün 10 durumu (2026-11-26) — tamamlandı
 **Kabul kriteri karşılandı.** Her pasajda `source` + `title` (ikisi de şemada `not null`,
-yani atıf sözleşme değil garanti); korpus dışı 10 sorunun **10'unda** `hybrid_rerank` susuyor.
+yani atıf sözleşme değil garanti); korpus dışı **13 sorunun 13'ünde** `hybrid_rerank` susuyor,
+kapsanan 16 sorunun hiçbirinde yanlış ret yok.
 
-Ölçülmüş susma aralığı: kosinüs 0,0231 — reranker **0,1266** (5,5 kat). Susma yalnızca
-`hybrid_rerank`'te güvenilir; bu, reranker'ın maliyetini hak ettiğinin Gün 10'daki kanıtı.
-Gecikme dense/hybrid 0,34 sn, `hybrid_rerank` 26,6 sn (CPU).
+**Kosinüs susmayı taşıyamıyor ve bu ölçüldü:** iki kapsanan soru (`higher_is_better` 0,5099,
+`G - xG` 0,5153) üç kapsanmayan sorunun altında puan alıyor, dağılımlar örtüşüyor. Reranker'ın
+aralığı 0,1266 ve sorgu biçiminden etkilenmiyor. Gecikme dense/hybrid 0,32 sn,
+`hybrid_rerank` ortalama 14,2 sn (CPU).
 
-Gerçek çıktıya bakarak bulunan iki hata — çift sigmoid (alakasız her pasaj tam 0,500) ve
-leksik VE semantiği (soru kelimesi tüm leksik listeyi düşürüyordu, hibrit sessizce "dense +
-süs" olmuştu). İkisi de düzeltildikten sonra aynı sorgu çifti 0,973 / 0,000 veriyor.
-481 birim + 176 db testi yeşil. Ayrıntı D-035.
+Dört hata gerçek çıktıya ve kod incelemesine bakılarak bulundu: çift sigmoid (alakasız her
+pasaj tam 0,500 = `sigmoid(0)`), leksik VE semantiği (bir soru kelimesi tüm leksik listeyi
+düşürüyordu — hibrit sessizce "dense + süs" olmuştu), `ingest()`'in commit etmesi
+(`make test-db` korpusu iki sahte satırla değiştiriyor, iki satır sıfır olmadığı için hata da
+vermiyordu), ve ilk kalibrasyon setinin yalnız tam cümlelerden oluşup var olmayan bir
+0,0231 aralığı "ölçmesi" — o sayı düzeltildi, savunulmadı.
+484 birim + 179 db testi yeşil. Ayrıntı D-035.
 
 ## Hafta 3 — Ajan, scouting raporları, xG analizi → `v0.3`
 

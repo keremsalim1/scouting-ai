@@ -27,26 +27,38 @@ rerank_candidates: 20
 top_n: 5
 
 # Abstention thresholds, measured by scripts/calibrate_abstain.py over
-# evals/rag/abstain_calibration.yaml (10 covered + 10 deliberately uncovered
-# questions). Each value is the midpoint of the gap between the two groups.
+# evals/rag/abstain_calibration.yaml (16 covered + 13 deliberately uncovered
+# questions, in both sentence and identifier shapes).
 #
-#   dense / hybrid   lowest in-corpus 0.5453, highest out-of-corpus 0.5222
-#                    -> gap 0.0231, midpoint 0.5338
-#   hybrid_rerank    lowest in-corpus 0.1386, highest out-of-corpus 0.0120
+#   dense / hybrid   in-corpus 0.5099-0.6903, out-of-corpus 0.3587-0.5222
+#                    -> OVERLAPPING. No midpoint exists.
+#   hybrid_rerank    in-corpus 0.1386-0.9993, out-of-corpus 0.0000-0.0120
 #                    -> gap 0.1266, midpoint 0.0753
 #
-# The gap is the number to read, not the threshold. Cosine similarity barely
-# separates covered from uncovered questions - 0.0231 is about one question's
-# worth of noise - so `dense` and `hybrid` abstain on thin evidence and one
-# new calibration question could move the cut. The cross-encoder's gap is
-# 5.5x wider and every uncovered question scored under 0.013, which is why
-# abstention is trustworthy only in hybrid_rerank. Day 11 re-measures both
-# against the 50-question gold set.
+# Cosine similarity cannot carry abstention. Two covered questions
+# ("higher_is_better ne anlama geliyor?" 0.5099, "G - xG" 0.5153) score below
+# three uncovered ones (0.5113, 0.5172, 0.5222), so no cut separates them.
+# An earlier run reported a 0.0231 gap here; that was an artefact of a
+# calibration set made entirely of full Turkish sentences, and adding
+# identifier-shaped queries - a shape this tool will certainly be given -
+# destroyed it. The number was corrected, not defended.
+#
+# So 0.5000 is not a midpoint: it is set just below the lowest covered score
+# and tuned for one error type. It never falsely rejects a covered question
+# (0 of 16) and still refuses 10 of 13 uncovered ones; the 3 it accepts are
+# the overlap. Of the two failures, abstaining on a real question breaks the
+# tool for the people using it, while accepting a weak passage is what the
+# cross-encoder downstream exists to catch.
+#
+# Abstention is trustworthy only in hybrid_rerank, which refuses 13 of 13
+# with 0 false rejections - and that is the measured reason it is the default
+# mode rather than an optional extra. Day 11 re-measures both against the
+# 50-question gold set.
 #
 # 0.0753 looks low for a "relevant" cut and is nevertheless correct: the
 # binding constraint is the lowest covered question (0.1386), not what reads
 # well.
-dense_abstain_threshold: 0.5338
+dense_abstain_threshold: 0.5000
 rerank_abstain_threshold: 0.0753
 
 rerank_model: BAAI/bge-reranker-v2-m3

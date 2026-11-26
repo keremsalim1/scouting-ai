@@ -26,6 +26,8 @@ _SNIPPET = 200
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    # nargs="+" so an unquoted question still works when the script is called
+    # directly; the Makefile quotes, so it arrives as one argument.
     parser.add_argument("query", nargs="+", help="the question, quoted")
     parser.add_argument("--mode", default="hybrid_rerank", choices=sorted(VALID_MODES))
     parser.add_argument("--top-n", type=int, default=None)

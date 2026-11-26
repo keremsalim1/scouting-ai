@@ -32,6 +32,24 @@ in_corpus:
     expect_topic: xg_regression
   - question: "Possession verisi nereden geliyor, sınırları ne?"
     expect_topic: possession_proxy
+  # Short forms and bare identifiers. The first version of this set was all
+  # full Turkish sentences, which made the measured cosine gap an artefact of
+  # one query shape: these score ~0.51-0.53, below where the sentence-shaped
+  # questions sit, and three of them land under the highest out-of-corpus
+  # score. A calibration set that cannot see a query shape the tool will
+  # actually get is measuring the set, not the system.
+  - question: "position_share"
+    expect_topic: position_groups
+  - question: "higher_is_better ne anlama geliyor?"
+    expect_topic: percentile_methodology
+  - question: "G - xG"
+    expect_topic: xg_regression
+  - question: "npxg_per_shot"
+    expect_topic: shooting
+  - question: "player_season_club"
+    expect_topic: season_vs_club
+  - question: "PAdj"
+    expect_topic: possession_adjustment
 
 # Deliberately uncovered: the corpus is scouting methodology and this
 # project's own data dictionary. It contains no market values, no contracts,
@@ -57,3 +75,11 @@ out_of_corpus:
     why: nonsense string, the degenerate case
   - question: "Real Madrid'in stadyum kapasitesi kaç?"
     why: club facts are not scouting methodology
+  # Short forms on this side too, so the comparison is between query shapes
+  # and not between "long covered" and "short uncovered".
+  - question: "bonservis bedeli"
+    why: short form, still a number the corpus cannot source
+  - question: "sakatlık süresi"
+    why: short form, no injury data
+  - question: "stadyum kapasitesi"
+    why: short form, club facts

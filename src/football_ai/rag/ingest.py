@@ -87,8 +87,13 @@ def ingest(
             "values (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             records,
         )
-    conn.commit()
 
+    # Deliberately does NOT commit: the transaction boundary belongs to the
+    # caller. scripts/ingest_kb.py commits; tests roll back. When this
+    # function committed, `make test-db` left the two fake rows of
+    # tests/test_rag_ingest_db.py in kb_chunks - and because two rows is not
+    # zero rows, EmptyCorpusError never fired and `make kb-search` silently
+    # searched them.
     return IngestResult(
         total_chunks=len(deduped),
         duplicate_chunks_skipped=duplicate_count,

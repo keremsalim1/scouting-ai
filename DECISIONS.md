@@ -1066,22 +1066,32 @@ Kabul kriterleri "her cevapta atıf" ve "korpus dışı soruda uydurma yok". İk
 
 **Sonuç/ölçüm.**
 
-*Susma eşikleri* (`scripts/calibrate_abstain.py`, `evals/rag/abstain_calibration.yaml`: 10 kapsanan + 10 kasıtlı kapsanmayan soru):
+*Susma eşikleri* (`scripts/calibrate_abstain.py`, `evals/rag/abstain_calibration.yaml`: 16 kapsanan + 13 kasıtlı kapsanmayan soru, hem tam cümle hem tanımlayıcı biçiminde):
 
-| mod | en düşük korpus-içi | en yüksek korpus-dışı | aralık | eşik | ort. gecikme |
-| --- | --- | --- | --- | --- | --- |
-| dense | 0,5453 | 0,5222 | 0,0231 | 0,5338 | 0,34 sn |
-| hybrid | 0,5453 | 0,5222 | 0,0231 | 0,5338 | 0,34 sn |
-| hybrid_rerank | 0,1386 | 0,0120 | **0,1266** | 0,0753 | **26,6 sn** |
+| mod | korpus-içi | korpus-dışı | aralık | eşik | yanlış ret | reddedilen korpus-dışı | ort. gecikme |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| dense | 0,5099–0,6903 | 0,3587–0,5222 | **örtüşüyor** | 0,5000 | 0/16 | 10/13 | 0,32 sn |
+| hybrid | 0,5099–0,6903 | 0,3587–0,5222 | **örtüşüyor** | 0,5000 | 0/16 | 10/13 | 0,32 sn |
+| hybrid_rerank | 0,1386–0,9993 | 0,0000–0,0120 | **0,1266** | 0,0753 | 0/16 | **13/13** | 14,2 sn |
 
-Okunacak sayı eşik değil **aralık**. Kosinüs benzerliği kapsanan ile kapsanmayanı neredeyse ayırmıyor — 0,0231 bir sorunun gürültüsü kadar — yani `dense` ve `hybrid` ince kanıtla susuyor ve tek bir yeni kalibrasyon sorusu kesme noktasını oynatabilir. Cross-encoder'ın aralığı **5,5 kat** geniş ve kapsanmayan on sorunun **tamamı** 0,013'ün altında kaldı. **Susma yalnızca `hybrid_rerank`'te güvenilir**, ve bu reranker'ın maliyetini hak ettiğinin Gün 10'daki kanıtı. Korpus dışı susma: `hybrid_rerank`'te 10/10.
+**Kosinüs benzerliği susma kararını taşıyamıyor.** İki kapsanan soru (`higher_is_better ne anlama geliyor?` 0,5099 ve `G - xG` 0,5153) üç kapsanmayan sorunun (0,5113 · 0,5172 · 0,5222) **altında** puan alıyor; hiçbir kesme noktası bunları ayırmaz.
+
+**Bu sayı düzeltildi, savunulmadı.** İlk koşu burada 0,0231'lik bir aralık bildirmişti ve ona dayanarak 0,5338 eşiği konmuştu. O aralık bir yapıntıydı: kalibrasyon setinin tamamı tam Türkçe cümleydi. Kod incelemesi, `position_share` / `higher_is_better` / `G - xG` gibi tanımlayıcı biçimli — aracın kesinlikle alacağı — sorgularda `hybrid`'in gerçek korpus-içi sorulara sustuğunu ölçtü; bu biçimler sete eklenince aralık negatife döndü. Kalibrasyon seti göremediği bir sorgu biçimi varken sistemi değil kendini ölçüyordu.
+
+Dolayısıyla 0,5000 bir orta nokta **değil**: en düşük kapsanan puanın hemen altına konmuş ve tek bir hata türü için ayarlanmış. Kapsanan 16 sorunun hiçbirini reddetmiyor, kapsanmayan 13'ten 10'unu yine reddediyor; kabul ettiği 3 tanesi örtüşme bölgesi. İki hatadan gerçek soruya susmak aracı kullananlar için bozar; zayıf pasajı kabul etmek ise aşağıdaki cross-encoder'ın yakalaması için var olan şeydir.
+
+Cross-encoder sorgu biçiminden **hiç etkilenmedi**: altı tanımlayıcı sorgusunun tamamı 0,85–0,99 aldı, kapsanmayan 13 sorunun tamamı 0,012'nin altında kaldı. **Susma yalnızca `hybrid_rerank`'te güvenilir (13/13 ret, 0 yanlış ret)** — ve bu, onun opsiyonel bir ek değil varsayılan mod olmasının ölçülmüş gerekçesi.
 
 *İki ölçülmüş hata, ikisi de gerçek çıktıya bakarak bulundu:*
 1. **Çift sigmoid.** `sentence-transformers` bge-reranker'ın sigmoid'ini `predict()` içinde zaten uyguluyor; üstüne bir sigmoid daha [0,1]'i [0,5; 0,731]'e sıkıştırıyordu. Parmak izi şuydu: korpus dışı her pasaj tam **0,500** (= `sigmoid(0)`), en iyi korpus içi pasaj **0,726** (= `sigmoid(0,97)`). Yani 0,97'lik bir olasılık sessizce eziliyor ve eşiğin oturacağı aralık hiç kalmıyordu. Düzeltmeden sonra aynı iki sorgu **0,973** ve **0,000**.
 2. **Leksik VE semantiği** (yukarıda). Düzeltmeden sonra `player_season_club nedir?` sorgusunda doğru chunk hem dense #1 (0,639) hem leksik #1 (`ts_rank` 0,4437), RRF 0,03279 — tek listede kalan bir sonucun aldığı 0,01639'un iki katı. Füzyonun ölçülmüş katkısı bu.
 
-*Gecikme.* Reranker sorgu başına 26,6 sn (CPU, 20 aday); dense ve hybrid 0,34 sn. Tasarım dokümanının kısıtı bunu baştan kabul ediyor ("50 chunk küçük bir korpus; gecikme hedefi burada ilginç değil, doğruluk ve susma ilginç"), o yüzden `rerank_candidates` 20'de bırakıldı. Ölçeklenme sınırı, hata değil; Gün 11 isterse 10'a düşürüp yeniden ölçer.
+*Gecikme.* Reranker sorgu başına 10,8–35,3 sn arası, 29 sorguda ortalama 14,2 sn (CPU, 20 aday); dense ve hybrid 0,32 sn. İlk 10 soruluk koşu ortalama 26,6 sn vermişti — fark model ısınmasından, sorgu maliyetinden değil, o yüzden tek sayı yerine aralık yazılıyor. Tasarım dokümanının kısıtı bunu baştan kabul ediyor ("50 chunk küçük bir korpus; gecikme hedefi burada ilginç değil, doğruluk ve susma ilginç"), o yüzden `rerank_candidates` 20'de bırakıldı. Ölçeklenme sınırı, hata değil; Gün 11 isterse 10'a düşürüp yeniden ölçer.
 
-*Testler.* 481 birim + 176 veritabanı testi yeşil. `pytest -m db` sonrası 3 test atlanır (`kb_chunks has 2 rows, not the real corpus; run make ingest-kb`): Gün 9'un `test_rag_ingest_db.py` testi sahte korpusu **commit** ediyor, bu yüzden gerçek korpusa bakan testler sıra bağımlı. Atlama mesajı çözümü söylüyor; `make ingest-kb` korpusu 50 chunk'a geri getiriyor.
+*`ingest()` commit etmez.* Gün 9'da ediyordu ve bu, `make test-db`'nin gerçek korpusu `test_rag_ingest_db.py`'nin iki sahte satırıyla değiştirmesi anlamına geliyordu. **İki satır sıfır satır değildir**, yani `EmptyCorpusError` tetiklenmiyor ve belgeli bir komut olan `make kb-search` sonrasında sessizce "body one"/"body two" arıyordu — projenin yasakladığı sessiz yanlışlığın tam tanımı. Transaction sınırı artık çağırana ait: `scripts/ingest_kb.py` commit ediyor, testler geri alıyor. Kanıt: tüm `-m db` paketinden sonra `count(*) = 50`.
+
+*Reranker puan ölçeği beyan edilir, tahmin edilmez.* İlk düzeltme sigmoid'i yalnız çıktı [0,1] dışındaysa uyguluyordu; bu, puanı **batch'e bağımlı** (zayıf negatif tek bir aday tüm batch'i öteki dala atıp alakasız bir pasajın puanını neredeyse ikiye katlıyordu) ve sınırda **monoton olmayan** (0,99 → 0,99 ama 1,01 → 0,733) hale getiriyordu. Oysa alaka puanı yalnız `(soru, pasaj)` fonksiyonu olmak zorunda. Artık `output_scale` yapıcıda beyan ediliyor ve model beyana aykırı değer döndürürse sessizce yeniden ölçeklemek yerine hata fırlatıyor — eşik eski ölçeğe göre kalibre edildiği için.
+
+*Testler.* 484 birim + 179 veritabanı testi yeşil; `tests/test_rag_fts_db.py` ve `test_rag_dense_db.py` artık CI'nın `gold` işinde koşuyor (veritabanı ister, model istemez — kendi fixture satırlarını yazıyorlar), yani deponun en kırılgan SQL'i tek bir makineye bağlı değil.
 
 **Tarih.** 2026-11-26
