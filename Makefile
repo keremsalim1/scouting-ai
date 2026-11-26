@@ -16,7 +16,7 @@ PSQL_DB ?= football
 
 .PHONY: help db-up db-down db-reset db-shell db-wait migrate etl etl-bench counts \
         ask schema-prompt llm-models validate test test-data test-db lint fmt check setup \
-        build-vectors eval-similarity \
+        build-vectors eval-similarity ingest-kb kb-search \
         eval-sql eval-sql-both eval-sql-gold eval-sql-merge \
         eval-sql-batch1 eval-sql-batch2 eval-sql-batch3 eval-sql-smoke
 
@@ -99,11 +99,18 @@ validate:
 MODEL_STRONG ?= gemini/gemini-3.8-flash
 MODEL_WEAK ?= gemini/gemini-3.1-flash-lite
 
+# Retrieval mode for `make kb-search`: dense | hybrid | hybrid_rerank.
+# Day 11 ablates all three, so all three are reachable by hand.
+MODE ?= hybrid_rerank
+
 build-vectors:
 	$(UV) run python scripts/build_vectors.py
 
 ingest-kb:
 	$(UV) run python scripts/ingest_kb.py
+
+kb-search:
+	$(UV) run python scripts/kb_search.py $(Q) --mode $(MODE)
 
 eval-similarity:
 	$(UV) run python scripts/eval_similarity.py

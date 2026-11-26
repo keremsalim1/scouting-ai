@@ -93,6 +93,26 @@ def test_lexical_search_finds_an_exact_technical_term(corpus):
     assert all(h.source and h.title for h in hits)
 
 
+def test_lexical_search_finds_a_term_inside_a_natural_language_question(corpus):
+    """Question words must not veto the match.
+
+    This is the difference between a working lexical retriever and decoration.
+    `websearch_to_tsquery` ANDs every term, and under `simple` there is no
+    stopword list to drop "nedir" - so a question-shaped query required a word
+    the corpus has never contained, the lexical list came back empty, and
+    hybrid search silently degraded to dense-with-extra-steps.
+    """
+    hits = lexical_search(corpus, "player_season_club nedir?", limit=5, text_search_config="simple")
+    assert [h.doc_id for h in hits][:1] == ["season-vs-club"]
+
+
+def test_lexical_search_ranks_the_chunk_matching_more_query_terms_higher(corpus):
+    # with OR semantics, ranking is what separates relevant from incidental:
+    # the chunk carrying both terms must outrank one carrying either
+    hits = lexical_search(corpus, "yüzdelik orta-sıra", limit=5, text_search_config="simple")
+    assert hits[0].doc_id == "percentile-methodology"
+
+
 def test_lexical_search_ranks_a_title_match_above_a_body_mention(corpus):
     # title is weighted A, body B: a note *about* the term outranks a passing
     # mention of it

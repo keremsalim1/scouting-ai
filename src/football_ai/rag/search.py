@@ -111,27 +111,43 @@ def lexical_search(
 ) -> list[Hit]:
     """Full-text search over `content_tsv`, ranked by `ts_rank`.
 
-    `websearch_to_tsquery` rather than `to_tsquery`: it accepts arbitrary user
-    text, so `&`, `|`, `!` and stray quotes in a real question are parsed as
-    words or phrase syntax instead of raising.
+    The query is the OR of the question's lexemes, not the AND that
+    `websearch_to_tsquery` and `plainto_tsquery` both produce. That choice is
+    the difference between a lexical retriever and decoration: ANDing makes
+    every word a hard requirement, and under the `simple` configuration there
+    is no stopword list to drop question words, so "player_season_club nedir?"
+    demanded a chunk containing "nedir" and returned nothing - while
+    "player_season_club" alone matched. Hybrid search then silently degraded
+    to dense-with-extra-steps, which the design doc names as an anti-goal.
+
+    AND is filter semantics; retrieval wants disjunction plus ranking, and
+    `ts_rank` is what separates "matched three rare terms" from "matched one
+    common one". Precision is recovered downstream by fusion and the
+    cross-encoder, which is what they are for.
+
+    The lexemes come from Postgres's own parser rather than from splitting the
+    string here, so tokenization matches the index exactly (`player_season_club`
+    becomes three lexemes on both sides) and nothing user-typed reaches the
+    tsquery as syntax.
     """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
+            # string_agg over zero lexemes is NULL, so a query of pure
+            # punctuation yields a NULL tsquery, matches nothing, and returns
+            # an empty list rather than raising.
+            "with q as ("
+            "  select to_tsquery(%s, string_agg(quote_literal(lexeme), ' | ')) as query"
+            "  from unnest(to_tsvector(%s, %s))"
+            ") "
             f"select {_HIT_COLUMNS}, "
-            "ts_rank(content_tsv, websearch_to_tsquery(%s, %s)) as ts_rank_score "
-            "from football.kb_chunks "
-            "where content_tsv @@ websearch_to_tsquery(%s, %s) "
+            "ts_rank(content_tsv, q.query) as ts_rank_score "
+            "from football.kb_chunks, q "
+            "where content_tsv @@ q.query "
             # id breaks ties so the rank list is deterministic; without it
             # equal-ranked chunks arrive in whatever order the scan produced.
             "order by ts_rank_score desc, id "
             "limit %s",
-            (
-                text_search_config,
-                query,
-                text_search_config,
-                query,
-                limit,
-            ),
+            (text_search_config, text_search_config, query, limit),
         )
         rows = cur.fetchall()
     return _to_hits(rows, "ts_rank_score")

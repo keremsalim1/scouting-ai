@@ -28,6 +28,23 @@ def test_score_pairs_the_query_with_every_passage():
     assert fake.seen == [("q", "p1"), ("q", "p2")]
 
 
+def test_score_passes_through_output_that_is_already_a_probability():
+    """Do not squash twice.
+
+    sentence-transformers applies bge-reranker's own sigmoid inside
+    `predict()`, so the raw output is already in [0, 1]. Applying another
+    sigmoid maps [0, 1] onto [0.5, 0.731] and destroys the discrimination the
+    cross-encoder exists to provide: against the real corpus every
+    out-of-corpus passage came back as exactly 0.500 and the best in-corpus
+    passage as 0.726 - which is sigmoid(0.97), i.e. a 0.97 probability
+    silently compressed.
+    """
+    out = Reranker(model=_FakeCrossEncoder([0.97, 0.0003, 0.5])).score("q", ["a", "b", "c"])
+    assert out[0] == pytest.approx(0.97)
+    assert out[1] == pytest.approx(0.0003)
+    assert out[2] == pytest.approx(0.5)
+
+
 def test_score_maps_logits_through_a_sigmoid():
     # raw bge-reranker output is an unbounded logit; a threshold in
     # config/rag.yaml has to be a readable number, so it is squashed to [0, 1]

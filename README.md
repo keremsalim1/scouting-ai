@@ -90,6 +90,8 @@ Run `make help` for the current list.
 | `make eval-sql-gold` | validate the gold set: guard + `EXPLAIN`, no LLM (what CI runs) |
 | `make eval-sql-smoke` | one question per category — 8 requests, fits a free-tier day |
 | `make eval-sql-merge` | stitch batched runs into one accuracy number (no LLM call) |
+| `make ingest-kb` | chunk, embed and load `kb/` into `kb_chunks` (local bge-m3) |
+| `make kb-search Q="..."` | one methodology question; `MODE=dense\|hybrid\|hybrid_rerank` |
 | `make test` | unit tests (no database, no dataset) |
 | `make test-data` | tests against the real OpenPlay dataset |
 | `make test-db` | tests against the loaded database |

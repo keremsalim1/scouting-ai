@@ -38,12 +38,22 @@ class Reranker:
         return self._model
 
     def score(self, query: str, passages: list[str]) -> np.ndarray:
-        """Relevance of each passage to the query, squashed into [0, 1].
+        """Relevance of each passage to the query, in [0, 1].
 
-        bge-reranker emits an unbounded logit. A sigmoid is applied here so
-        that the number stored on a passage and compared against
-        `rerank_abstain_threshold` is readable: 0.9 means "clearly relevant"
-        rather than "4.2, which is apparently high".
+        The contract is the range, because `rerank_abstain_threshold` has to
+        be a readable number: 0.9 means "clearly relevant" rather than "4.2,
+        which is apparently high".
+
+        Getting there needs one check rather than an unconditional sigmoid.
+        sentence-transformers applies bge-reranker's own sigmoid inside
+        `predict()`, so its output is usually already a probability - and
+        squashing a second time maps [0, 1] onto [0.5, 0.731], which is not a
+        cosmetic error: against the real corpus it turned every irrelevant
+        passage into exactly 0.500 and a 0.97 match into 0.726, leaving no gap
+        for an abstention threshold to sit in. Raw logits are still handled,
+        because whether that activation is applied depends on the model's
+        config and the library version, and this wrapper should not break when
+        either changes.
         """
         if not passages:
             # before _load_model: an empty candidate list must not pay for a
@@ -57,4 +67,6 @@ class Reranker:
         if logits.shape[0] != len(passages):
             msg = f"reranker returned {logits.shape[0]} scores for {len(passages)} passages"
             raise ValueError(msg)
-        return (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
+        if logits.size and (logits.min() < 0.0 or logits.max() > 1.0):
+            return (1.0 / (1.0 + np.exp(-logits))).astype(np.float32)
+        return logits.astype(np.float32)
